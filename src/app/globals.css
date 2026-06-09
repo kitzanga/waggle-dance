@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+@theme {
+  /* Waggle Dance color palette - dark, warm, editorial */
+  --color-surface: #1a1614;
+  --color-surface-raised: #242120;
+  --color-surface-overlay: #2e2a28;
+  --color-border: #3d3835;
+  --color-border-subtle: #2e2a28;
+
+  --color-text-primary: #f5f0eb;
+  --color-text-secondary: #b8a99a;
+  --color-text-muted: #7a6b5d;
+
+  --color-accent: #e8a54b;
+  --color-accent-hover: #f0b85e;
+  --color-accent-muted: #c4883a;
+
+  --color-error: #e85454;
+  --color-success: #5cb85c;
+
+  /* Typography */
+  --font-serif: 'Georgia', 'Times New Roman', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Base styles */
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Reading typography */
+.prose-reading {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: var(--color-text-primary);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.prose-reading p {
+  margin-bottom: 1.5em;
+}
+
+.prose-reading h1,
+.prose-reading h2,
+.prose-reading h3 {
+  font-family: var(--font-serif);
+  color: var(--color-text-primary);
+  margin-bottom: 0.5em;
+}
