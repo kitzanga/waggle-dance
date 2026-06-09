@@ -53,7 +53,8 @@ export function useIntake({
         })
 
         if (!response.ok) {
-          throw new Error('Failed to send message')
+          const errorData = await response.json().catch(() => null)
+          throw new Error(errorData?.error || `Request failed: ${response.status}`)
         }
 
         let assistantContent = ''

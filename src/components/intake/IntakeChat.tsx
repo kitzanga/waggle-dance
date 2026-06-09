@@ -103,18 +103,6 @@ export function IntakeChat({
           <IntakeMessage key={i} message={msg} />
         ))}
 
-        {isStreaming && messages[messages.length - 1]?.content === '' && (
-          <div className="py-4">
-            <div className="max-w-[var(--content-max-width)] mx-auto">
-              <div className="flex gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse" />
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse [animation-delay:150ms]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse [animation-delay:300ms]" />
-              </div>
-            </div>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
