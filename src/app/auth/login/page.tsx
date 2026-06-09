@@ -4,7 +4,6 @@ import { useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -35,10 +34,19 @@ function LoginForm() {
         setLoading(false)
         return
       }
-      setError(null)
-      // Show confirmation message
-      setError('Check your email for a confirmation link.')
-      setLoading(false)
+      // Sign in immediately after signup (since email confirmation is disabled)
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (signInError) {
+        setError('Account created. Please sign in.')
+        setIsSignUp(false)
+        setLoading(false)
+        return
+      }
+      router.push(redirectTo)
+      router.refresh()
       return
     }
 
@@ -58,45 +66,67 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="w-full max-w-sm">
-        <h1 className="font-serif text-3xl text-[var(--color-text-primary)] mb-2 text-center">
-          Waggle Dance
+    <main className="flex min-h-screen flex-col items-center justify-center px-6">
+      <div className="w-full max-w-[320px]">
+        <h1 className="text-[24px] font-semibold text-[var(--color-text-primary)] mb-1 text-center tracking-tight">
+          {isSignUp ? 'Create Account' : 'Sign In'}
         </h1>
-        <p className="text-[var(--color-text-secondary)] text-center mb-8">
-          {isSignUp ? 'Create your account' : 'Sign in to continue'}
+        <p className="text-[13px] text-[var(--color-text-tertiary)] text-center mb-8">
+          {isSignUp ? 'Get started with Waggle Dance' : 'Welcome back'}
         </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            required
-            autoComplete="email"
-          />
-          <Input
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            autoComplete={isSignUp ? 'new-password' : 'current-password'}
-          />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div>
+            <label htmlFor="email" className="text-[13px] text-[var(--color-text-secondary)] mb-1.5 block">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoComplete="email"
+              className="
+                w-full rounded-[var(--radius-md)] px-3.5 py-2.5
+                bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]
+                placeholder:text-[var(--color-text-tertiary)]
+                focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]/30
+                text-[15px] min-h-[44px]
+              "
+            />
+          </div>
+
+          <div>
+            <label htmlFor="password" className="text-[13px] text-[var(--color-text-secondary)] mb-1.5 block">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
+              className="
+                w-full rounded-[var(--radius-md)] px-3.5 py-2.5
+                bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]
+                placeholder:text-[var(--color-text-tertiary)]
+                focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]/30
+                text-[15px] min-h-[44px]
+              "
+            />
+          </div>
 
           {error && (
-            <p
-              className="text-sm text-[var(--color-error)] text-center"
-              role="alert"
-            >
+            <p className="text-[13px] text-[var(--color-error)] text-center" role="alert">
               {error}
             </p>
           )}
 
-          <Button type="submit" loading={loading} className="w-full mt-2">
+          <Button type="submit" loading={loading} className="w-full mt-2" size="lg">
             {isSignUp ? 'Create Account' : 'Sign In'}
           </Button>
         </form>
@@ -107,11 +137,9 @@ function LoginForm() {
             setIsSignUp(!isSignUp)
             setError(null)
           }}
-          className="w-full mt-4 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors text-center"
+          className="w-full mt-5 text-[13px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors text-center"
         >
-          {isSignUp
-            ? 'Already have an account? Sign in'
-            : "Don't have an account? Sign up"}
+          {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Create one'}
         </button>
       </div>
     </main>

@@ -10,20 +10,14 @@ export function IntakeMessage({ message }: IntakeMessageProps) {
   const isAssistant = message.role === 'assistant'
 
   return (
-    <div
-      className={`flex ${isAssistant ? 'justify-start' : 'justify-end'} mb-4`}
-    >
-      <div
-        className={`
-          max-w-[85%] rounded-2xl px-4 py-3 text-base leading-relaxed
-          ${
-            isAssistant
-              ? 'bg-[var(--color-surface-raised)] text-[var(--color-text-primary)] rounded-bl-sm'
-              : 'bg-[var(--color-accent-muted)] text-[var(--color-text-primary)] rounded-br-sm'
-          }
-        `}
-      >
-        <p className="whitespace-pre-wrap">{message.content}</p>
+    <div className="py-4 border-b border-[var(--color-separator)]">
+      <div className={`max-w-[var(--content-max-width)] mx-auto ${isAssistant ? '' : 'pl-8 opacity-70'}`}>
+        <p className={`
+          text-[15px] leading-[1.6] whitespace-pre-wrap
+          ${isAssistant ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'}
+        `}>
+          {message.content}
+        </p>
       </div>
     </div>
   )
