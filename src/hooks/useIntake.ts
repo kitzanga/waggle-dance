@@ -70,11 +70,16 @@ export function useIntake({
           switch (event.type) {
             case 'token':
               assistantContent += event.content
+              // Strip signal markers from display
+              const displayContent = assistantContent
+                .replace(/```signals\n[\s\S]*?\n```/g, '')
+                .replace(/\[SIGNALS_READY\]/g, '')
+                .trim()
               setMessages((prev) => {
                 const updated = [...prev]
                 updated[updated.length - 1] = {
                   ...updated[updated.length - 1],
-                  content: assistantContent,
+                  content: displayContent,
                 }
                 return updated
               })
