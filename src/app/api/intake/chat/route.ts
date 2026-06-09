@@ -17,10 +17,14 @@ export async function POST(request: Request) {
   const supabase = await createClient()
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return Response.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 })
+    return Response.json(
+      { error: 'Unauthorized', code: 'AUTH_REQUIRED', debug: authError?.message || 'no user found' },
+      { status: 401 }
+    )
   }
 
   const body: IntakeChatRequest = await request.json()
