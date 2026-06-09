@@ -17,6 +17,7 @@ export type IntakeStreamEvent =
   | { type: 'token'; content: string }
   | { type: 'signal_update'; signal: string; value: string }
   | { type: 'ready_to_generate'; signals: import('./story').IntakeSignals }
+  | { type: 'error'; message: string }
   | { type: 'done' }
 
 /** SSE event types for story generation streaming */

@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   return createStreamingResponse(async function* () {
     try {
       const stream = anthropic.messages.stream({
-        model: 'claude-sonnet-4-5-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 2048,
         system: systemPrompt,
         messages: [
