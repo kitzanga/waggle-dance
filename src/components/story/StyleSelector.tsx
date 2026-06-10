@@ -18,7 +18,7 @@ const STYLES: { value: VisualStyle; label: string; description: string }[] = [
 export function StyleSelector({ currentStyle, onChange, disabled }: StyleSelectorProps) {
   return (
     <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="text-sm text-[var(--color-text-secondary)] mb-2">
+      <legend className="mb-2" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
         Visual Style
       </legend>
       <div className="grid grid-cols-2 gap-2">
@@ -27,22 +27,23 @@ export function StyleSelector({ currentStyle, onChange, disabled }: StyleSelecto
             key={style.value}
             type="button"
             onClick={() => onChange(style.value)}
-            className={`
-              flex flex-col items-start p-3 rounded-lg border transition-all duration-150
-              min-h-[44px]
-              ${
-                currentStyle === style.value
-                  ? 'border-[var(--color-accent)] bg-[var(--color-surface-overlay)]'
-                  : 'border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)] hover:border-[var(--color-border)]'
-              }
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
+            className="flex flex-col items-start p-3 rounded-lg transition-all duration-150 min-h-[44px]"
+            style={{
+              border: currentStyle === style.value
+                ? '1px solid var(--accent)'
+                : '0.5px solid var(--border-default)',
+              background: currentStyle === style.value
+                ? 'var(--accent-bg)'
+                : 'var(--surface-card)',
+              opacity: disabled ? 0.5 : 1,
+              cursor: disabled ? 'not-allowed' : 'pointer',
+            }}
             aria-pressed={currentStyle === style.value}
           >
-            <span className="text-sm font-medium text-[var(--color-text-primary)]">
+            <span className="font-medium" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
               {style.label}
             </span>
-            <span className="text-xs text-[var(--color-text-muted)] mt-0.5">
+            <span className="mt-0.5" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
               {style.description}
             </span>
           </button>

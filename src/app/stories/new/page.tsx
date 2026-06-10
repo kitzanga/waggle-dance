@@ -26,7 +26,10 @@ export default function NewStoryPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        router.push('/auth/login')
+        return
+      }
 
       const { data, error } = await supabase
         .from('stories')
@@ -39,7 +42,7 @@ export default function NewStoryPage() {
       }
     }
     createStory()
-  }, [])
+  }, [router])
 
   const { phase: genPhase, transitionMessage, generate, error: genError } =
     useStoryGeneration({ storyId: storyId || '' })
@@ -53,7 +56,6 @@ export default function NewStoryPage() {
     if (!signals || !storyId) return
     setPhase('generating')
 
-    // Update topic in the DB before generating
     const supabase = createClient()
     await supabase
       .from('stories')
@@ -66,47 +68,55 @@ export default function NewStoryPage() {
 
   if (!storyId) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <span className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-accent)] border-t-transparent" />
+      <div
+        className="flex items-center justify-center"
+        style={{ minHeight: 'calc(100vh - 48px)' }}
+        role="status"
+        aria-label="Loading"
+      >
+        <span
+          className="h-5 w-5 animate-spin rounded-full border-2 border-t-transparent"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+          aria-hidden="true"
+        />
       </div>
     )
   }
 
   // Intake phase
   if (phase === 'intake') {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <header className="px-4 py-3 border-b border-[var(--color-border-subtle)]">
-          <h1 className="font-serif text-lg text-[var(--color-text-primary)]">New Story</h1>
-        </header>
-        <div className="flex-1">
-          <IntakeChat storyId={storyId} onComplete={handleIntakeComplete} />
-        </div>
-      </div>
-    )
+    return <IntakeChat storyId={storyId} onComplete={handleIntakeComplete} />
   }
 
   // Style selection phase
   if (phase === 'style') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
+      <div
+        className="flex flex-col items-center justify-center px-4"
+        style={{ minHeight: 'calc(100vh - 48px)' }}
+      >
         <div className="max-w-sm w-full space-y-6">
           <div className="text-center">
-            <h2 className="font-serif text-2xl text-[var(--color-text-primary)] mb-2">
+            <h2
+              className="mb-2"
+              style={{
+                fontFamily: 'var(--font-reading)',
+                fontSize: 'var(--text-xl)',
+                color: 'var(--text-primary)',
+                fontWeight: 400,
+              }}
+            >
               One last thing
             </h2>
-            <p className="text-sm text-[var(--color-text-secondary)]">
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
               Choose how the illustrations will feel. You can change this later.
             </p>
           </div>
 
-          <StyleSelector
-            currentStyle={visualStyle}
-            onChange={setVisualStyle}
-          />
+          <StyleSelector currentStyle={visualStyle} onChange={setVisualStyle} />
 
           <Button onClick={handleGenerate} className="w-full" size="lg">
-            Create the Story
+            Find the story
           </Button>
         </div>
       </div>
@@ -116,18 +126,10 @@ export default function NewStoryPage() {
   // Generation phase
   if (phase === 'generating') {
     return (
-      <div className="min-h-screen">
-        <GenerationTransition
-          isActive={genPhase === 'transition' || genPhase === 'streaming' || genPhase === 'idle'}
-          message={transitionMessage}
-        />
-        {genError && (
-          <div className="text-center px-4">
-            <p className="text-[var(--color-error)] mb-4">{genError}</p>
-            <Button onClick={handleGenerate}>Try Again</Button>
-          </div>
-        )}
-      </div>
+      <GenerationTransition
+        isActive={genPhase === 'transition' || genPhase === 'streaming' || genPhase === 'idle'}
+        message={transitionMessage}
+      />
     )
   }
 

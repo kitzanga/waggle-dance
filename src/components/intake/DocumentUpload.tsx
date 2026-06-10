@@ -30,7 +30,6 @@ export function DocumentUpload({
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Client-side validation
     if (!ACCEPTED_TYPES.includes(file.type)) {
       onUploadError('Unsupported format. Accepted: PDF, DOCX, PPTX')
       return
@@ -74,9 +73,18 @@ export function DocumentUpload({
 
   if (uploadedName) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-surface-raised)] border border-[var(--color-border-subtle)] text-sm text-[var(--color-text-secondary)]">
+      <div
+        className="flex items-center gap-2 px-3 py-2 rounded-lg"
+        style={{
+          background: 'var(--surface-card)',
+          border: '0.5px solid var(--border-default)',
+          fontSize: 'var(--text-sm)',
+          color: 'var(--text-secondary)',
+        }}
+      >
         <svg
-          className="w-4 h-4 text-[var(--color-success)] shrink-0"
+          className="w-4 h-4 shrink-0"
+          style={{ color: '#30d158' }}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -108,20 +116,16 @@ export function DocumentUpload({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={isUploading}
-        className="
-          flex items-center gap-2 px-3 py-2 rounded-lg
-          text-sm text-[var(--color-text-muted)]
-          hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]
-          transition-colors duration-150
-          disabled:opacity-50
-          min-h-[44px]
-        "
+        aria-label="Attach a document (PDF, DOCX, or PPTX)"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-150 disabled:opacity-50 min-h-[44px] min-w-[44px]"
+        style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
       >
         {isUploading ? (
           <>
             <span
               className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
               aria-hidden="true"
+              role="status"
             />
             <span>Uploading...</span>
           </>

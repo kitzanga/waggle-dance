@@ -29,17 +29,19 @@ export function StoryView({
     setRefiningIndex(chapterIndex)
     await refine(chapterIndex, direction, story.storyContent)
     setRefiningIndex(null)
-    // The parent should re-fetch the story after refinement
   }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
       {/* Story header */}
       <header className="mb-8">
-        <h1 className="font-serif text-3xl text-[var(--color-text-primary)] mb-2">
+        <h1
+          className="mb-2"
+          style={{ fontFamily: 'var(--font-reading)', fontSize: 'var(--text-2xl)', color: 'var(--text-primary)' }}
+        >
           {story.title || 'Untitled Story'}
         </h1>
-        <p className="text-sm text-[var(--color-text-muted)]">
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
           {story.storyContent.length} chapters · About {story.topic}
         </p>
       </header>
@@ -58,13 +60,13 @@ export function StoryView({
       </div>
 
       {/* Controls panel */}
-      <aside className="border-t border-[var(--color-border)] pt-6 space-y-6">
+      <aside className="pt-6 space-y-6" style={{ borderTop: '1px solid var(--border-default)' }}>
         {/* Regenerate */}
         <div>
           <Button variant="secondary" onClick={onRegenerate} className="w-full">
             Regenerate Entire Story
           </Button>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1 text-center">
+          <p className="mt-1 text-center" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
             Uses the same intake signals. Previous version will be saved.
           </p>
         </div>
@@ -77,56 +79,51 @@ export function StoryView({
 
         {/* Visuals toggle */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[var(--color-text-secondary)]">
+          <span id="visuals-toggle-label" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
             Include visuals when sharing
           </span>
           <button
             type="button"
             role="switch"
             aria-checked={story.visualsEnabled}
+            aria-labelledby="visuals-toggle-label"
             onClick={() => onToggleVisuals(!story.visualsEnabled)}
-            className={`
-              relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-              ${story.visualsEnabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'}
-            `}
+            className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors min-w-[48px] min-h-[44px]"
+            style={{ background: story.visualsEnabled ? 'var(--accent)' : 'var(--border-default)' }}
           >
             <span
-              className={`
-                inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                ${story.visualsEnabled ? 'translate-x-6' : 'translate-x-1'}
-              `}
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${story.visualsEnabled ? 'translate-x-6' : 'translate-x-1'}`}
             />
           </button>
         </div>
 
         {/* Share toggle */}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-[var(--color-text-secondary)]">
+          <span id="share-toggle-label" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
             Share link active
           </span>
           <button
             type="button"
             role="switch"
             aria-checked={story.shareActive}
+            aria-labelledby="share-toggle-label"
             onClick={() => onToggleShare(!story.shareActive)}
-            className={`
-              relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-              ${story.shareActive ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'}
-            `}
+            className="relative inline-flex h-7 w-12 items-center rounded-full transition-colors min-w-[48px] min-h-[44px]"
+            style={{ background: story.shareActive ? 'var(--accent)' : 'var(--border-default)' }}
           >
             <span
-              className={`
-                inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                ${story.shareActive ? 'translate-x-6' : 'translate-x-1'}
-              `}
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${story.shareActive ? 'translate-x-6' : 'translate-x-1'}`}
             />
           </button>
         </div>
 
         {story.shareActive && (
-          <div className="bg-[var(--color-surface-raised)] rounded-lg p-3">
-            <p className="text-xs text-[var(--color-text-muted)] mb-1">Share link</p>
-            <code className="text-sm text-[var(--color-text-secondary)] break-all">
+          <div
+            className="rounded-lg p-3"
+            style={{ background: 'var(--surface-card)', border: '0.5px solid var(--border-default)' }}
+          >
+            <p className="mb-1" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>Share link</p>
+            <code className="break-all" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
               {typeof window !== 'undefined'
                 ? `${window.location.origin}/read/${story.shareToken}`
                 : `/read/${story.shareToken}`}

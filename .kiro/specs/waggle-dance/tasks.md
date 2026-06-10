@@ -44,11 +44,11 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Configure 7-day session persistence and sign-out with session clearing
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-  - [ ]* 2.3 Write property test for authentication and story ownership
+  - [x] 2.3 Write property test for authentication and story ownership
     - **Property 1 (partial): Story ownership invariant** — verify that stories created in an authenticated session are always associated with the authenticated user's ID
     - **Validates: Requirements 1.1, 1.2**
 
-- [ ] 3. Checkpoint - Ensure auth and database work
+- [x] 3. Checkpoint - Ensure auth and database work
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 4. Intake engine and document upload
@@ -93,7 +93,7 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Implement 10-minute inactivity detection for session persistence
     - _Requirements: 2.1, 2.8, 3.2, 3.3_
 
-  - [ ]* 4.6 Write property test for intake signal invariants
+  - [x] 4.6 Write property test for intake signal invariants
     - **Property 2: Intake Signal Invariants** — verify: (a) story cannot transition to `generating` without non-empty topic, (b) intake_transcript is append-only, (c) document fields are both-set-or-both-null
     - **Validates: Requirements 2.3, 2.6, 2.8, 3.7**
 
@@ -125,7 +125,7 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Allow style change post-generation with image prompt regeneration
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
 
-  - [ ]* 5.4 Write property test for story integrity invariants
+  - [x] 5.4 Write property test for story integrity invariants
     - **Property 1: Story Integrity Invariants** — verify: (a) story_content has 0-5 chapters, (b) completed chapters have non-empty title/body/imagePrompt, (c) visual_style is always a valid enum, (d) status follows state machine, (e) share_token is unique and non-null, (f) previous_versions is append-only
     - **Validates: Requirements 4.1, 4.7, 5.2, 6.1, 6.3**
 
@@ -151,11 +151,11 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Allow accept, further refinement, or revert actions
     - _Requirements: 5.1, 5.3, 5.6_
 
-  - [ ]* 6.4 Write property test for refinement invariants
+  - [x] 6.4 Write property test for refinement invariants
     - **Property 4: Refinement Invariants** — verify: (a) only the targeted chapter changes during refinement, (b) full regeneration pushes current content to previous_versions before overwrite, (c) refinement only applies to stories with status `complete`
     - **Validates: Requirements 5.1, 5.2, 5.5**
 
-- [ ] 7. Checkpoint - Ensure core creator flow works end-to-end
+- [x] 7. Checkpoint - Ensure core creator flow works end-to-end
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 8. Reader experience and sharing
@@ -181,7 +181,7 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Confirm deactivation with note that existing links stop working
     - _Requirements: 8.1, 8.4, 10.4_
 
-  - [ ]* 8.4 Write property test for sharing invariants
+  - [x] 8.4 Write property test for sharing invariants
     - **Property 3: Sharing Invariants** — verify: (a) reader access is blocked when share_active is false, (b) share URL never reveals story ID or creator identity, (c) invalid/non-existent tokens produce same response as deactivated tokens
     - **Validates: Requirements 8.1, 8.2, 8.4, 8.5**
 
@@ -230,7 +230,7 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Ensure responsive layout across all breakpoints
     - _Requirements: 1.6, 12.1_
 
-  - [ ] 12.2 Accessibility and responsive audit pass
+  - [x] 12.2 Accessibility and responsive audit pass
     - Verify WCAG 2.1 Level AA contrast ratios (4.5:1 normal text, 3:1 large text)
     - Ensure all interactive elements reachable via Tab, activatable via Enter/Space, with visible focus indicators
     - Add ARIA labels to all elements without visible text labels
@@ -239,7 +239,7 @@ Implement a Next.js + TypeScript application on Vercel with Supabase (auth, Post
     - Ensure no horizontal scrolling at any supported viewport width
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
 
-- [ ] 13. Final checkpoint - Ensure all tests pass
+- [x] 13. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

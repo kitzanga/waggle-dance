@@ -24,13 +24,20 @@ export function ChapterCard({ chapter, index, onRefine, isRefining }: ChapterCar
   }
 
   return (
-    <article className="border border-[var(--color-border-subtle)] rounded-xl p-6 bg-[var(--color-surface-raised)]">
+    <article
+      className="rounded-xl p-6"
+      style={{
+        background: 'var(--surface-card)',
+        border: '0.5px solid var(--border-default)',
+        borderRadius: 'var(--radius-lg)',
+      }}
+    >
       <header className="flex items-start justify-between mb-4">
         <div>
-          <span className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">
+          <span className="uppercase tracking-wide" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
             Chapter {index + 1}
           </span>
-          <h3 className="font-serif text-lg text-[var(--color-text-primary)] mt-1">
+          <h3 className="mt-1" style={{ fontFamily: 'var(--font-reading)', fontSize: 'var(--text-lg)', color: 'var(--text-primary)' }}>
             {chapter.title}
           </h3>
         </div>
@@ -44,13 +51,21 @@ export function ChapterCard({ chapter, index, onRefine, isRefining }: ChapterCar
         </Button>
       </header>
 
-      <div className="prose-reading text-base leading-relaxed text-[var(--color-text-secondary)]">
+      <div className="leading-relaxed" style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
         <p className="whitespace-pre-wrap">{chapter.body}</p>
       </div>
 
       {showRefine && (
-        <form onSubmit={handleSubmitRefinement} className="mt-4 pt-4 border-t border-[var(--color-border-subtle)]">
-          <label htmlFor={`refine-${index}`} className="text-sm text-[var(--color-text-muted)] block mb-2">
+        <form
+          onSubmit={handleSubmitRefinement}
+          className="mt-4 pt-4"
+          style={{ borderTop: '1px solid var(--border-default)' }}
+        >
+          <label
+            htmlFor={`refine-${index}`}
+            className="block mb-2"
+            style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
+          >
             What would you like to change about this chapter?
           </label>
           <textarea
@@ -60,17 +75,16 @@ export function ChapterCard({ chapter, index, onRefine, isRefining }: ChapterCar
             placeholder="e.g., Make the stakes feel more urgent..."
             maxLength={500}
             rows={2}
-            className="
-              w-full resize-none rounded-lg px-4 py-3
-              bg-[var(--color-surface)] text-[var(--color-text-primary)]
-              border border-[var(--color-border)]
-              placeholder:text-[var(--color-text-muted)]
-              focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]
-              text-sm
-            "
+            className="w-full resize-none rounded-lg px-4 py-3 text-sm"
+            style={{
+              background: 'var(--surface-input)',
+              color: 'var(--text-primary)',
+              border: '0.5px solid var(--border-input)',
+              outline: 'none',
+            }}
           />
           <div className="flex items-center justify-between mt-2">
-            <span className="text-xs text-[var(--color-text-muted)]">
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
               {direction.length}/500
             </span>
             <div className="flex gap-2">

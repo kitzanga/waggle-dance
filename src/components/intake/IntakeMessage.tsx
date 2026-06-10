@@ -10,20 +10,27 @@ export function IntakeMessage({ message }: IntakeMessageProps) {
   const isAssistant = message.role === 'assistant'
 
   return (
-    <div className="py-4 border-b border-[var(--color-separator)] last:border-b-0">
-      <div className={`max-w-[var(--content-max-width)] mx-auto px-6 ${isAssistant ? '' : 'pl-14 opacity-70'}`}>
+    <div className="py-4 last:border-b-0" style={{ borderBottom: '1px solid var(--border-default)' }}>
+      <div
+        className={`mx-auto px-6 ${isAssistant ? '' : 'pl-14 opacity-70'}`}
+        style={{ maxWidth: 'var(--content-max)' }}
+      >
         {message.content ? (
-          <p className={`
-            text-[15px] leading-[1.6] whitespace-pre-wrap
-            ${isAssistant ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'}
-          `}>
+          <p
+            className="whitespace-pre-wrap"
+            style={{
+              fontSize: 'var(--text-base)',
+              lineHeight: 1.6,
+              color: isAssistant ? 'var(--text-primary)' : 'var(--text-secondary)',
+            }}
+          >
             {message.content}
           </p>
         ) : isAssistant ? (
-          <div className="flex gap-1.5 py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse" />
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse [animation-delay:150ms]" />
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-text-tertiary)] animate-pulse [animation-delay:300ms]" />
+          <div className="flex gap-1.5 py-1" role="status" aria-label="Loading response">
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--text-muted)' }} aria-hidden="true" />
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse [animation-delay:150ms]" style={{ background: 'var(--text-muted)' }} aria-hidden="true" />
+            <span className="w-1.5 h-1.5 rounded-full animate-pulse [animation-delay:300ms]" style={{ background: 'var(--text-muted)' }} aria-hidden="true" />
           </div>
         ) : null}
       </div>

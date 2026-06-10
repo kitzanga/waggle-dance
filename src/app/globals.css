@@ -1,71 +1,127 @@
 @import 'tailwindcss';
 
-@theme {
-  /* Backgrounds — layered depth system */
-  --color-bg-base: #000000;
-  --color-bg-primary: #0d0d0d;
-  --color-bg-secondary: #1a1a1c;
-  --color-bg-tertiary: #2c2c2e;
-  --color-bg-elevated: #3a3a3c;
-
-  /* Text hierarchy */
-  --color-text-primary: #f5f5f7;
-  --color-text-secondary: #a1a1a6;
-  --color-text-tertiary: #636366;
-  --color-text-quaternary: #48484a;
-
-  /* Accent — warm amber */
-  --color-accent: #ff9f0a;
-  --color-accent-hover: #ffb340;
-
-  /* Semantic */
-  --color-error: #ff453a;
-  --color-success: #30d158;
-
-  /* Borders */
-  --color-separator: rgba(255, 255, 255, 0.08);
-  --color-separator-opaque: #38383a;
-
+/* ─── Global tokens (mode-independent) ─── */
+:root {
   /* Typography */
-  --font-system: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
-  --font-reading: 'New York', 'Iowan Old Style', Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-reading: Georgia, 'New York', serif;
 
-  /* Radius */
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --content-max: 600px;
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Radii */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
 
-  /* Layout */
-  --sidebar-width: 240px;
-  --content-max-width: 720px;
+  /* Intake question typography */
+  --text-question: 20px;
+  --text-question-weight: 400;
+  --text-question-leading: 1.45;
+  --text-question-tracking: -0.015em;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+
+  /* Z-index */
+  --z-header: 50;
+  --z-modal-backdrop: 60;
+  --z-modal: 70;
+  --z-toast: 80;
 }
 
-/* Base */
+/* ─── Light mode (creator screens) ─── */
+[data-mode="light"] {
+  --surface-page: #f7f6f2;
+  --surface-card: #ffffff;
+  --surface-input: #ffffff;
+  --surface-bar: transparent;
+  --text-primary: #111111;
+  --text-secondary: rgba(0, 0, 0, 0.5);
+  --text-muted: rgba(0, 0, 0, 0.32);
+  --text-placeholder: rgba(0, 0, 0, 0.25);
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-input: rgba(0, 0, 0, 0.14);
+  --border-input-focus: rgba(0, 0, 0, 0.3);
+  --accent: #c47a00;
+  --accent-bg: rgba(180, 108, 0, 0.08);
+  --accent-border: rgba(180, 108, 0, 0.2);
+  --progress-done: rgba(180, 108, 0, 0.35);
+  --progress-active: #c47a00;
+  --progress-empty: rgba(0, 0, 0, 0.1);
+}
+
+/* ─── Dark mode (reading experience) ─── */
+[data-mode="dark"] {
+  --surface-page: #000000;
+  --surface-elevated: #0d0d0d;
+  --surface-card: #1a1a1c;
+  --surface-input: #1a1a1c;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.5);
+  --text-muted: rgba(255, 255, 255, 0.32);
+  --text-placeholder: rgba(255, 255, 255, 0.22);
+  --border-default: rgba(255, 255, 255, 0.07);
+  --border-input: rgba(255, 255, 255, 0.12);
+  --border-input-focus: rgba(255, 159, 10, 0.3);
+  --accent: #ff9f0a;
+  --accent-bg: rgba(255, 159, 10, 0.08);
+  --accent-border: rgba(255, 159, 10, 0.2);
+  --progress-done: rgba(255, 159, 10, 0.5);
+  --progress-active: #ff9f0a;
+  --progress-empty: rgba(255, 255, 255, 0.1);
+}
+
+/* ─── Base styles ─── */
 body {
-  font-family: var(--font-system);
-  font-size: 15px;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
   line-height: 1.47;
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Focus ring — Apple style */
+/* Focus ring */
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.3);
+  box-shadow: 0 0 0 2px var(--accent, #c47a00), 0 0 0 5px rgba(196, 122, 0, 0.15);
   border-radius: var(--radius-sm);
 }
 
 /* Reading typography */
 .prose-reading {
   font-family: var(--font-reading);
-  font-size: 17px;
+  font-size: var(--text-md);
   line-height: 1.7;
-  color: var(--color-text-primary);
-  max-width: var(--content-max-width);
+  color: var(--text-primary);
+  max-width: 720px;
   margin: 0 auto;
 }
 
@@ -91,19 +147,54 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-bg-elevated);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-quaternary);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+[data-mode="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-mode="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 0ms !important;
   }
+}
+
+/* Prevent horizontal scrolling */
+html,
+body {
+  overflow-x: hidden;
+}
+
+/* Skip to content link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.75rem 1rem;
+  background: var(--accent, #c47a00);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 1rem;
 }

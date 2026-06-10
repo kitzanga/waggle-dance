@@ -16,7 +16,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            className="text-sm text-[var(--color-text-secondary)]"
+            style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}
           >
             {label}
           </label>
@@ -24,17 +24,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={`
-            w-full rounded-lg px-4 py-3
-            bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]
-            border border-[var(--color-border)]
-            placeholder:text-[var(--color-text-muted)]
-            focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]
-            transition-colors duration-150
-            min-h-[44px]
-            ${error ? 'border-[var(--color-error)]' : ''}
-            ${className}
-          `}
+          className={`w-full rounded-lg px-4 py-3 transition-colors duration-150 min-h-[44px] ${className}`}
+          style={{
+            background: 'var(--surface-input)',
+            color: 'var(--text-primary)',
+            border: error ? '1px solid #ff453a' : '0.5px solid var(--border-input)',
+            outline: 'none',
+            fontSize: 'var(--text-base)',
+          }}
           aria-invalid={error ? 'true' : undefined}
           aria-describedby={error ? `${inputId}-error` : undefined}
           {...props}
@@ -42,7 +39,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {error && (
           <p
             id={`${inputId}-error`}
-            className="text-sm text-[var(--color-error)]"
+            style={{ fontSize: 'var(--text-sm)', color: '#ff453a' }}
             role="alert"
           >
             {error}

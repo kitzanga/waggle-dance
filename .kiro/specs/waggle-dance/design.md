@@ -1,999 +1,699 @@
-# Technical Design Document
+# Design Document: Waggle Dance Design System Overhaul & Intake Redesign
 
 ## Overview
 
-Waggle Dance is a Next.js application that combines a conversational AI intake system with a story generation engine to produce short-form narrative content. The architecture separates three concerns: the creator experience (auth, intake, refinement, management), the AI layer (streaming intake conversations and story generation via Claude), and the reader experience (public, SSR-rendered story pages with paced chapter reveal).
+This design covers a comprehensive visual and structural overhaul of the Waggle Dance application. The changes span three major areas:
+
+1. **Navigation restructure** — Replace the existing 240px fixed sidebar (`Sidebar.tsx`) with a 48px transparent top navigation bar, reclaiming horizontal space on all creator screens.
+2. **Design token system** — Replace the current `@theme` block in `globals.css` with a scoped CSS custom property architecture that supports light mode (creator screens) and dark mode (reading experience) without conflicts.
+3. **Intake screen rebuild** — Redesign `/stories/new` with a bottom-up conversation layout, Framer Motion entrance animations, a 4-segment progress indicator, and a redesigned input bar with strict AI conversational constraints.
+
+The existing tech stack (Next.js App Router, TypeScript, Tailwind CSS v4, Framer Motion, Supabase) remains unchanged. No new dependencies are introduced.
 
 ## Architecture
 
-### High-Level System Diagram
+### High-Level Component Tree
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                          Vercel (Hosting)                            │
-│                                                                     │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                   Next.js Application                        │   │
-│  │                                                             │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐   │   │
-│  │  │  Creator UI  │  │  Reader UI   │  │   Auth Pages   │   │   │
-│  │  │  (protected) │  │  (public)    │  │   (public)     │   │   │
-│  │  └──────┬───────┘  └──────┬───────┘  └────────┬───────┘   │   │
-│  │         │                  │                    │           │   │
-│  │  ┌──────┴──────────────────┴────────────────────┴───────┐  │   │
-│  │  │              API Routes (Route Handlers)              │  │   │
-│  │  │                                                       │  │   │
-│  │  │  /api/intake/chat     - Streaming intake conversation │  │   │
-│  │  │  /api/stories/generate - Streaming story generation   │  │   │
-│  │  │  /api/stories/refine   - Chapter refinement           │  │   │
-│  │  │  /api/stories/[id]     - CRUD operations              │  │   │
-│  │  │  /api/documents/upload - Document processing          │  │   │
-│  │  │  /api/export/pdf       - PDF generation               │  │   │
-│  │  └──────────────────────────┬────────────────────────────┘  │   │
-│  └─────────────────────────────┼───────────────────────────────┘   │
-│                                │                                    │
-└────────────────────────────────┼────────────────────────────────────┘
-                                 │
-                    ┌────────────┼────────────────┐
-                    │            │                 │
-           ┌───────▼───────┐ ┌──▼──────────┐ ┌───▼──────────┐
-           │   Supabase    │ │  Anthropic   │ │  Image API   │
-           │               │ │  Claude API  │ │  (stubbed)   │
-           │  - Auth       │ │              │ │              │
-           │  - Postgres   │ │  claude-     │ │  Replicate   │
-           │  - Storage    │ │  sonnet-4-5  │ │  or OpenAI   │
-           └───────────────┘ └─────────────┘ └──────────────┘
+```mermaid
+graph TD
+    RootLayout["RootLayout (html, body)"]
+    RootLayout --> CreatorLayout["CreatorLayout [data-mode=light]"]
+    RootLayout --> ReaderLayout["ReaderLayout [data-mode=dark]"]
+
+    CreatorLayout --> TopNav
+    CreatorLayout --> DashboardPage
+    CreatorLayout --> IntakeScreen["/stories/new"]
+    CreatorLayout --> StoryDetail["/stories/[id]"]
+
+    IntakeScreen --> OpeningState
+    IntakeScreen --> ExchangeList
+    IntakeScreen --> ProgressIndicator
+    IntakeScreen --> InputBar
+
+    ExchangeList --> HeroExchange
+    ExchangeList --> PastExchange["PastExchange (×n)"]
+
+    InputBar --> AttachButton
+    InputBar --> TextareaAutoExpand
+    InputBar --> SendButton
+
+    ReaderLayout --> ReaderExperience["/read/[shareToken]"]
 ```
 
-### Application Routes
+### Route-to-Layout Mapping
+
+| Route | Layout | Mode | Has TopNav |
+|-------|--------|------|-----------|
+| `/dashboard` | `CreatorLayout` | light | Yes |
+| `/stories/new` | `CreatorLayout` | light | Yes |
+| `/stories/[id]` | `CreatorLayout` | light | Yes |
+| `/read/[shareToken]` | `ReaderLayout` | dark | No |
+| `/auth/login` | None (minimal) | light | No |
+
+### CSS Token Scoping Strategy
+
+Mode scoping uses a `data-mode` attribute on the layout wrapper element rather than a media query or class toggle. This allows both modes to coexist in the same session without conflicts:
 
 ```
-/                           → Landing page (public)
-/auth/login                 → Sign in (public)
-/auth/callback              → OAuth callback handler
-/dashboard                  → Story list/management (protected)
-/stories/new                → Intake interview flow (protected)
-/stories/[id]               → Story view with refinement (protected)
-/stories/[id]/export        → PDF export trigger (protected)
-/read/[shareToken]          → Public reader experience (public, SSR)
+html
+  body
+    [data-mode="light"]  ← CreatorLayout sets light tokens
+      TopNav
+      Page content...
+    
+    [data-mode="dark"]   ← ReaderLayout sets dark tokens
+      Reader content...
 ```
 
-### Component Architecture
+The `globals.css` file defines tokens under scoped selectors:
 
+```css
+[data-mode="light"] {
+  --surface-page: #f7f6f2;
+  --text-primary: #111111;
+  /* ... all light tokens */
+}
+
+[data-mode="dark"] {
+  --surface-page: #000000;
+  --text-primary: #ffffff;
+  /* ... all dark tokens */
+}
 ```
-src/
-├── app/
-│   ├── layout.tsx                    # Root layout with providers
-│   ├── page.tsx                      # Landing page
-│   ├── auth/
-│   │   ├── login/page.tsx            # Login page
-│   │   └── callback/route.ts        # OAuth callback
-│   ├── dashboard/
-│   │   ├── layout.tsx                # Protected layout wrapper
-│   │   └── page.tsx                  # Story list
-│   ├── stories/
-│   │   ├── new/page.tsx              # Intake flow container
-│   │   └── [id]/
-│   │       ├── page.tsx              # Story view + refinement
-│   │       └── export/route.ts       # PDF generation endpoint
-│   ├── read/
-│   │   └── [shareToken]/page.tsx     # Public reader (SSR)
-│   └── api/
-│       ├── intake/
-│       │   └── chat/route.ts         # Streaming intake conversation
-│       ├── stories/
-│       │   ├── generate/route.ts     # Streaming story generation
-│       │   └── refine/route.ts       # Chapter refinement
-│       ├── documents/
-│       │   └── upload/route.ts       # Document upload + extraction
-│       └── export/
-│           └── pdf/route.ts          # PDF generation
-├── components/
-│   ├── intake/
-│   │   ├── IntakeChat.tsx            # Chat interface for intake
-│   │   ├── IntakeMessage.tsx         # Individual message bubble
-│   │   ├── DocumentUpload.tsx        # File upload affordance
-│   │   └── IntakeProgress.tsx        # Signal completion indicator
-│   ├── story/
-│   │   ├── StoryView.tsx             # Full story display
-│   │   ├── ChapterCard.tsx           # Individual chapter with refinement
-│   │   ├── RefinementChat.tsx        # Chapter refinement interface
-│   │   ├── GenerationTransition.tsx  # Transition animation state
-│   │   └── StyleSelector.tsx         # Visual style picker
-│   ├── reader/
-│   │   ├── ReaderExperience.tsx      # Paced reading container
-│   │   ├── ChapterReveal.tsx         # Animated chapter display
-│   │   └── ChapterTransition.tsx     # Between-chapter moment
-│   ├── dashboard/
-│   │   ├── StoryList.tsx             # Story cards grid
-│   │   ├── StoryCard.tsx             # Individual story preview
-│   │   └── EmptyState.tsx            # First-story prompt
-│   ├── shared/
-│   │   ├── ShareControls.tsx         # Share link management
-│   │   └── ExportButton.tsx          # PDF export trigger
-│   └── ui/
-│       ├── Button.tsx                # Base button
-│       ├── Input.tsx                 # Text input
-│       └── Modal.tsx                 # Confirmation dialogs
-├── lib/
-│   ├── supabase/
-│   │   ├── client.ts                 # Browser Supabase client
-│   │   ├── server.ts                 # Server Supabase client
-│   │   └── middleware.ts             # Auth middleware
-│   ├── ai/
-│   │   ├── intake-prompt.ts          # Intake system prompt
-│   │   ├── story-prompt.ts           # Story generation system prompt
-│   │   ├── refinement-prompt.ts      # Chapter refinement prompt
-│   │   └── stream.ts                 # Streaming response utilities
-│   ├── documents/
-│   │   ├── extract.ts               # PDF/DOCX/PPTX text extraction
-│   │   └── parse.ts                 # Signal extraction from doc text
-│   └── export/
-│       └── pdf.ts                    # PDF generation logic
-├── hooks/
-│   ├── useIntake.ts                  # Intake conversation state
-│   ├── useStoryGeneration.ts         # Generation streaming hook
-│   └── useChapterRefinement.ts       # Refinement streaming hook
-└── types/
-    ├── story.ts                      # Story, Chapter, IntakeSignals types
-    ├── intake.ts                     # Intake message, mode types
-    └── database.ts                   # Supabase generated types
+
+Components reference generic token names (e.g., `var(--surface-page)`, `var(--text-primary)`) and the scoping attribute resolves the correct value. This eliminates the need for `-dark` suffixed tokens in component code.
+
+### Sidebar Removal Plan
+
+1. Delete `src/components/ui/Sidebar.tsx`
+2. Update `src/app/stories/layout.tsx` — remove `Sidebar` import and `md:ml-[var(--sidebar-width)]`
+3. Update `src/app/dashboard/layout.tsx` — same removal
+4. Remove `--sidebar-width: 240px` from `globals.css`
+5. Replace with `CreatorLayout` component that renders `TopNav` + content area
+
+## Components and Interfaces
+
+### TopNav Component
+
+**File:** `src/components/ui/TopNav.tsx`
+
+```typescript
+interface TopNavProps {
+  // No props needed — reads route from usePathname()
+}
+```
+
+**Behavior:**
+- 48px height, full-width, transparent background inheriting `--surface-page`
+- 1px bottom border using `--border-default`
+- Left: "Waggle Dance" wordmark (14px, weight 500, `--text-primary`)
+- Right: "Library" ghost button + "+ New" pill button, 8px gap
+- Responsive padding: 24px below 768px, 40px at 768px+
+- Does NOT render on `/read/[shareToken]` routes (handled by layout exclusion)
+
+### CreatorLayout Component
+
+**File:** `src/components/layout/CreatorLayout.tsx`
+
+```typescript
+interface CreatorLayoutProps {
+  children: React.ReactNode
+}
+```
+
+**Behavior:**
+- Wraps all creator-facing routes
+- Sets `data-mode="light"` on its root element
+- Renders `<TopNav />` followed by `<main>` content
+- Replaces current sidebar-based layouts in `/dashboard/layout.tsx` and `/stories/layout.tsx`
+
+### IntakeScreen (Page Component)
+
+**File:** `src/app/stories/new/page.tsx` (rewrite)
+
+**State machine phases:** `'opening' | 'conversing' | 'style' | 'generating'`
+
+```typescript
+interface IntakeScreenState {
+  phase: 'opening' | 'conversing' | 'style' | 'generating'
+  storyId: string | null
+  exchanges: Exchange[]
+  signals: Partial<IntakeSignals>
+  currentQuestion: number // 0-3, maps to progress indicator
+}
+
+interface Exchange {
+  question: string      // AI question text
+  answer: string | null // Creator answer (null if unanswered hero)
+  signalKey: keyof IntakeSignals | null
+}
+```
+
+### ExchangeList Component
+
+**File:** `src/components/intake/ExchangeList.tsx`
+
+```typescript
+interface ExchangeListProps {
+  exchanges: Exchange[]
+  isStreaming: boolean
+}
+```
+
+**Behavior:**
+- Uses `flex-col-reverse` layout (CSS `flex-direction: column-reverse`) for bottom-up stacking
+- Newest exchange (hero) renders at `--text-question` (20px) size
+- All previous exchanges render at `--text-sm` (13px), questions in `--text-muted`, answers in `--text-secondary`
+- Separator: 1px `--border-default` with 8px vertical margin between exchanges
+
+### HeroExchange Component
+
+**File:** `src/components/intake/HeroExchange.tsx`
+
+```typescript
+interface HeroExchangeProps {
+  question: string
+  isNew: boolean // triggers entrance animation
+}
+```
+
+**Framer Motion animation:**
+```typescript
+const heroVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1], delay: 0.05 }
+  }
+}
+```
+
+### PastExchange Component
+
+**File:** `src/components/intake/PastExchange.tsx`
+
+```typescript
+interface PastExchangeProps {
+  question: string
+  answer: string
+  isCollapsing: boolean // triggers shrink animation from hero → past
+}
+```
+
+**Framer Motion animation (collapse from hero):**
+```typescript
+const collapseVariants = {
+  hero: { fontSize: '20px', color: 'var(--text-primary)' },
+  past: { 
+    fontSize: '13px', 
+    color: 'var(--text-muted)',
+    transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }
+  }
+}
+```
+
+### ProgressIndicator Component
+
+**File:** `src/components/intake/ProgressIndicator.tsx`
+
+```typescript
+interface ProgressIndicatorProps {
+  currentStep: number  // 0-3
+  completedSteps: number // 0-4
+  visible: boolean
+}
+
+type SegmentState = 'done' | 'active' | 'empty'
+```
+
+**Behavior:**
+- 4 pill segments, 2px height, fully rounded, 4px gap
+- Row is 24px tall, constrained to `--content-max` (600px), centered
+- Segments map to fixed questions: idea → desired outcome → audience → resistance
+- Color transitions use 400ms duration
+- Hidden during opening state
+
+### InputBar Component
+
+**File:** `src/components/intake/InputBar.tsx`
+
+```typescript
+interface InputBarProps {
+  onSubmit: (text: string) => void
+  onAttach: () => void
+  isDisabled: boolean
+  attachError: string | null
+}
+```
+
+**Behavior:**
+- Sticky to bottom, inherits `--surface-page` background, 1px top border
+- Padding: `12px 24px 20px` (extra bottom for mobile home indicator)
+- Inner container: `--content-max` width, centered
+- Flex row: AttachButton (34×34 circle) | textarea (flex:1) | SendButton (34×34 circle)
+- Textarea: auto-expands 1–5 lines, `--surface-input` bg, 18px border-radius
+- Enter submits, Shift+Enter inserts newline
+- SendButton: `--accent` fill, white arrow, disabled at 0.35 opacity when input is empty
+- SendButton active: scale(0.94) for 100ms
+
+### OpeningState Component
+
+**File:** `src/components/intake/OpeningState.tsx`
+
+```typescript
+interface OpeningStateProps {
+  visible: boolean
+  onDismiss: () => void // triggered by first message submit
+}
+```
+
+**Framer Motion exit:**
+```typescript
+const exitVariants = {
+  visible: { opacity: 1, y: 0 },
+  hidden: { 
+    opacity: 0, 
+    y: -8,
+    transition: { duration: 0.2 }
+  }
+}
 ```
 
 ## Data Models
 
-### Database Schema
+### Design Tokens (CSS Custom Properties)
 
-```sql
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+The token system replaces the current `@theme` block. Tokens are organized by category:
 
--- Stories table
-CREATE TABLE stories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  title TEXT,
-  topic TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'intake' 
-    CHECK (status IN ('intake', 'generating', 'complete', 'error')),
-  
-  -- Source document
-  source_document_url TEXT,
-  source_document_type TEXT CHECK (source_document_type IN ('pdf', 'pptx', 'docx')),
-  
-  -- Intake data
-  intake_transcript JSONB DEFAULT '[]'::jsonb,
-  intake_signals JSONB DEFAULT '{}'::jsonb,
-  
-  -- Engine internals (never exposed to UI)
-  framework_selected TEXT[],
-  
-  -- Story content
-  story_content JSONB DEFAULT '[]'::jsonb,
-  -- Each element: { title: string, body: string, image_prompt: string, image_url: string | null }
-  
-  -- Version history for revert
-  previous_versions JSONB DEFAULT '[]'::jsonb,
-  
-  -- Visual style
-  visual_style TEXT NOT NULL DEFAULT 'watercolor'
-    CHECK (visual_style IN ('watercolor', 'manga', 'flat', 'ink_sketch')),
-  style_prompt TEXT,
-  visuals_enabled BOOLEAN NOT NULL DEFAULT true,
-  
-  -- Sharing
-  share_token UUID UNIQUE DEFAULT uuid_generate_v4(),
-  share_active BOOLEAN NOT NULL DEFAULT false,
-  
-  -- Timestamps
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+#### Color Tokens (scoped via `[data-mode]`)
 
--- User profiles (extends Supabase auth.users)
-CREATE TABLE user_profiles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  display_name TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+```
+[data-mode="light"]:
+  --surface-page: #f7f6f2
+  --surface-card: #ffffff
+  --surface-input: #ffffff
+  --surface-bar: transparent
+  --text-primary: #111111
+  --text-secondary: rgba(0,0,0,0.5)
+  --text-muted: rgba(0,0,0,0.32)
+  --text-placeholder: rgba(0,0,0,0.25)
+  --border-default: rgba(0,0,0,0.08)
+  --border-input: rgba(0,0,0,0.14)
+  --border-input-focus: rgba(0,0,0,0.3)
+  --accent: #c47a00
+  --accent-bg: rgba(180,108,0,0.08)
+  --accent-border: rgba(180,108,0,0.2)
+  --progress-done: rgba(180,108,0,0.35)
+  --progress-active: #c47a00
+  --progress-empty: rgba(0,0,0,0.1)
 
--- Indexes
-CREATE INDEX idx_stories_user_id ON stories(user_id);
-CREATE INDEX idx_stories_share_token ON stories(share_token) WHERE share_active = true;
-CREATE INDEX idx_stories_updated_at ON stories(user_id, updated_at DESC);
-
--- Row Level Security
-ALTER TABLE stories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
-
--- Policies: Creator can CRUD their own stories
-CREATE POLICY "Users can view own stories" ON stories
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own stories" ON stories
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own stories" ON stories
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own stories" ON stories
-  FOR DELETE USING (auth.uid() = user_id);
-
--- Policy: Public read access via share token (for reader view)
-CREATE POLICY "Public can read shared stories" ON stories
-  FOR SELECT USING (share_active = true);
-
--- User profiles policies
-CREATE POLICY "Users can view own profile" ON user_profiles
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own profile" ON user_profiles
-  FOR UPDATE USING (auth.uid() = user_id);
-
--- Trigger: auto-update updated_at
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER stories_updated_at
-  BEFORE UPDATE ON stories
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at();
-
--- Trigger: auto-create user profile on signup
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.user_profiles (user_id)
-  VALUES (NEW.id);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW
-  EXECUTE FUNCTION handle_new_user();
+[data-mode="dark"]:
+  --surface-page: #000000
+  --surface-elevated: #0d0d0d
+  --surface-card: #1a1a1c
+  --surface-input: #1a1a1c
+  --text-primary: #ffffff
+  --text-secondary: rgba(255,255,255,0.5)
+  --text-muted: rgba(255,255,255,0.32)
+  --text-placeholder: rgba(255,255,255,0.22)
+  --border-default: rgba(255,255,255,0.07)
+  --border-input: rgba(255,255,255,0.12)
+  --border-input-focus: rgba(255,159,10,0.3)
+  --accent: #ff9f0a
+  --accent-bg: rgba(255,159,10,0.08)
+  --accent-border: rgba(255,159,10,0.2)
+  --progress-done: rgba(255,159,10,0.5)
+  --progress-active: #ff9f0a
+  --progress-empty: rgba(255,255,255,0.1)
 ```
 
-### TypeScript Types
+#### Typography Tokens (global, not scoped)
+
+```
+--font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif
+--font-reading: Georgia, 'New York', serif
+
+--text-xs: 11px (line-height 1.45)
+--text-sm: 13px (line-height 1.45)
+--text-base: 15px (line-height 1.5)
+--text-md: 17px (line-height 1.5)
+--text-lg: 20px (line-height 1.4)
+--text-xl: 24px (line-height 1.35)
+--text-2xl: 30px (line-height 1.3)
+
+--text-question: 20px
+--text-question-weight: 400
+--text-question-leading: 1.45
+--text-question-tracking: -0.015em
+```
+
+#### Spacing Tokens (global)
+
+```
+--space-1: 4px
+--space-2: 8px
+--space-3: 12px
+--space-4: 16px
+--space-5: 20px
+--space-6: 24px
+--space-8: 32px
+--space-10: 40px
+--content-max: 600px
+```
+
+#### Motion Tokens (global)
+
+```
+--duration-fast: 150ms
+--duration-base: 250ms
+--duration-slow: 400ms
+--ease-default: cubic-bezier(0.25, 0.1, 0.25, 1)
+--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1)
+```
+
+### Intake AI System Prompt (Revised)
+
+The current `buildIntakeSystemPrompt()` function is replaced with a constrained version enforcing the strict conversational rules from Requirement 11:
+
+**Key changes from current prompt:**
+- Remove "briefly reflect back or reframe" instruction (violates no-affirmation rule)
+- Remove permission for 2-3 sentences before the question (question IS the entire response)
+- Replace flexible interview modes with a fixed 4-question sequence
+- Enforce hard 20-word maximum per response
+- Remove all structured choice and continuum modes
+- Add explicit prohibitions: no affirmations, no markdown, no em dashes
+
+**New prompt structure:**
+```
+Role: Sharp colleague asking good questions
+Constraint: Exactly 1 interrogative sentence per turn, ≤20 words total
+Sequence: Fixed 4 questions in order (idea → desired outcome → audience → resistance)
+Tone: Direct, no hedging, no therapeutic language
+Forbidden: Affirmations, markdown, em dashes, preambles
+Signal extraction: Same JSON block mechanism (hidden from user)
+Completion: After Q4, emit [SIGNALS_READY] — one inference-confirm allowed if genuinely unclear
+```
+
+### Framer Motion Animation Patterns
+
+All intake animations use a shared motion configuration:
 
 ```typescript
-// types/story.ts
+// src/lib/motion/intake.ts
 
-export interface IntakeSignals {
-  topic: string;
-  tension: string | null;
-  audiencePortrait: string | null;
-  resistancePattern: string | null;
-  stakes: string | null;
-  desiredShift: string | null;
-}
+export const INTAKE_MOTION = {
+  heroEnter: {
+    initial: { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.35, ease: [0.25, 0.1, 0.25, 1], delay: 0.05 },
+  },
+  heroCollapse: {
+    animate: { fontSize: '13px', color: 'var(--text-muted)' },
+    transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] },
+  },
+  openingExit: {
+    exit: { opacity: 0, y: -8 },
+    transition: { duration: 0.2 },
+  },
+  sendPress: {
+    whileTap: { scale: 0.94 },
+    transition: { duration: 0.1 },
+  },
+  progressFill: {
+    transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] },
+  },
+} as const
 
-export interface Chapter {
-  title: string;
-  body: string;
-  imagePrompt: string;
-  imageUrl: string | null;
-}
-
-export type VisualStyle = 'watercolor' | 'manga' | 'flat' | 'ink_sketch';
-
-export type StoryStatus = 'intake' | 'generating' | 'complete' | 'error';
-
-export interface Story {
-  id: string;
-  userId: string;
-  title: string | null;
-  topic: string;
-  status: StoryStatus;
-  sourceDocumentUrl: string | null;
-  sourceDocumentType: 'pdf' | 'pptx' | 'docx' | null;
-  intakeTranscript: IntakeMessage[];
-  intakeSignals: IntakeSignals;
-  frameworkSelected: string[];
-  storyContent: Chapter[];
-  previousVersions: Chapter[][];
-  visualStyle: VisualStyle;
-  stylePrompt: string | null;
-  visualsEnabled: boolean;
-  shareToken: string;
-  shareActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// types/intake.ts
-
-export type IntakeMode = 'conversational' | 'continuum' | 'structured_choice' | 'inference_confirm';
-
-export interface IntakeMessage {
-  role: 'assistant' | 'user';
-  content: string;
-  mode?: IntakeMode;
-  signalTargeted?: keyof IntakeSignals;
-  timestamp: string;
-}
-
-export interface IntakeState {
-  storyId: string;
-  messages: IntakeMessage[];
-  signals: IntakeSignals;
-  documentUploaded: boolean;
-  readyToGenerate: boolean;
+// Reduced motion hook
+export function useReducedMotion(): boolean {
+  // Delegates to framer-motion's useReducedMotion()
+  // When true, all entrance animations skip to final state
+  // All state transitions apply instantly
 }
 ```
 
-## API Design
+### globals.css Restructure
 
-### Intake Chat (Streaming)
+The current `@theme { ... }` block is replaced entirely:
 
-```
-POST /api/intake/chat
-Content-Type: application/json
+```css
+@import 'tailwindcss';
 
-Request:
-{
-  "storyId": "uuid",
-  "message": "string",
-  "signals": IntakeSignals  // current state for context
+/* ─── Global tokens (mode-independent) ─── */
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  --font-reading: Georgia, 'New York', serif;
+  
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 30px;
+  
+  /* Spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --content-max: 600px;
+  
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+  --ease-default: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  
+  /* Question typography */
+  --text-question: 20px;
+  --text-question-weight: 400;
+  --text-question-leading: 1.45;
+  --text-question-tracking: -0.015em;
 }
 
-Response: Server-Sent Events stream
-data: {"type": "token", "content": "..."}
-data: {"type": "signal_update", "signal": "topic", "value": "..."}
-data: {"type": "ready_to_generate", "signals": IntakeSignals}
-data: {"type": "done"}
-```
-
-### Story Generation (Streaming)
-
-```
-POST /api/stories/generate
-Content-Type: application/json
-
-Request:
-{
-  "storyId": "uuid",
-  "signals": IntakeSignals,
-  "visualStyle": VisualStyle,
-  "documentContent": "string | null"
+/* ─── Light mode (creator screens) ─── */
+[data-mode="light"] {
+  --surface-page: #f7f6f2;
+  --surface-card: #ffffff;
+  --surface-input: #ffffff;
+  --surface-bar: transparent;
+  --text-primary: #111111;
+  --text-secondary: rgba(0,0,0,0.5);
+  --text-muted: rgba(0,0,0,0.32);
+  --text-placeholder: rgba(0,0,0,0.25);
+  --border-default: rgba(0,0,0,0.08);
+  --border-input: rgba(0,0,0,0.14);
+  --border-input-focus: rgba(0,0,0,0.3);
+  --accent: #c47a00;
+  --accent-bg: rgba(180,108,0,0.08);
+  --accent-border: rgba(180,108,0,0.2);
+  --progress-done: rgba(180,108,0,0.35);
+  --progress-active: #c47a00;
+  --progress-empty: rgba(0,0,0,0.1);
 }
 
-Response: Server-Sent Events stream
-data: {"type": "transition", "message": "..."}
-data: {"type": "chapter_start", "index": 0, "title": "..."}
-data: {"type": "token", "content": "..."}
-data: {"type": "chapter_complete", "index": 0, "imagePrompt": "..."}
-data: {"type": "story_complete", "title": "...", "frameworkSelected": [...]}
-data: {"type": "error", "message": "..."}
-```
-
-### Chapter Refinement (Streaming)
-
-```
-POST /api/stories/refine
-Content-Type: application/json
-
-Request:
-{
-  "storyId": "uuid",
-  "chapterIndex": number,
-  "direction": "string (max 500 chars)",
-  "fullStory": Chapter[]  // all chapters for context
+/* ─── Dark mode (reading experience) ─── */
+[data-mode="dark"] {
+  --surface-page: #000000;
+  --surface-elevated: #0d0d0d;
+  --surface-card: #1a1a1c;
+  --surface-input: #1a1a1c;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255,255,255,0.5);
+  --text-muted: rgba(255,255,255,0.32);
+  --text-placeholder: rgba(255,255,255,0.22);
+  --border-default: rgba(255,255,255,0.07);
+  --border-input: rgba(255,255,255,0.12);
+  --border-input-focus: rgba(255,159,10,0.3);
+  --accent: #ff9f0a;
+  --accent-bg: rgba(255,159,10,0.08);
+  --accent-border: rgba(255,159,10,0.2);
+  --progress-done: rgba(255,159,10,0.5);
+  --progress-active: #ff9f0a;
+  --progress-empty: rgba(255,255,255,0.1);
 }
 
-Response: Server-Sent Events stream
-data: {"type": "token", "content": "..."}
-data: {"type": "chapter_complete", "chapter": Chapter}
-data: {"type": "error", "message": "..."}
-```
-
-### Document Upload
-
-```
-POST /api/documents/upload
-Content-Type: multipart/form-data
-
-Request:
-  file: File (PDF, PPTX, DOCX, max 20MB)
-  storyId: string
-
-Response:
-{
-  "success": true,
-  "documentUrl": "string",
-  "extractedText": "string (truncated for intake context)",
-  "inferredSignals": Partial<IntakeSignals>
-}
-```
-
-### PDF Export
-
-```
-POST /api/export/pdf
-Content-Type: application/json
-
-Request:
-{
-  "storyId": "uuid"
-}
-
-Response: application/pdf (binary stream)
-```
-
-## Key Technical Decisions
-
-### Streaming Architecture
-
-Both intake and story generation use Server-Sent Events (SSE) via Next.js Route Handlers. The pattern:
-
-1. Client sends a POST request
-2. Server creates a `ReadableStream` with a `TransformStream`
-3. Server calls Claude API with `stream: true`
-4. Each token from Claude is written to the stream as an SSE event
-5. Client reads the stream using `EventSource` or `fetch` with stream reading
-
-```typescript
-// lib/ai/stream.ts (pattern)
-export function createStreamingResponse(
-  claudeStream: AsyncIterable<StreamEvent>
-): Response {
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      for await (const event of claudeStream) {
-        const data = `data: ${JSON.stringify(event)}\n\n`;
-        controller.enqueue(encoder.encode(data));
-      }
-      controller.close();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
-}
-```
-
-### Auth Middleware Pattern
-
-Using Next.js middleware with Supabase SSR helpers:
-
-```typescript
-// middleware.ts
-import { createServerClient } from '@supabase/ssr';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-
-export async function middleware(request: NextRequest) {
-  // Protected routes check
-  const protectedPaths = ['/dashboard', '/stories'];
-  const isProtected = protectedPaths.some(p => 
-    request.nextUrl.pathname.startsWith(p)
-  );
-
-  if (isProtected) {
-    const supabase = createServerClient(/* config */);
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return NextResponse.redirect(new URL('/auth/login', request.url));
-    }
+/* ─── Reduced motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
   }
-
-  return NextResponse.next();
 }
 ```
 
-### Reader View SSR
 
-Share pages use Next.js server components for instant load and Open Graph metadata:
-
-```typescript
-// app/read/[shareToken]/page.tsx
-import { Metadata } from 'next';
-
-export async function generateMetadata({ params }): Promise<Metadata> {
-  const story = await getStoryByShareToken(params.shareToken);
-  if (!story) return { title: 'Story not available' };
-  
-  return {
-    title: story.title,
-    description: `A story about ${story.topic}`,
-    openGraph: {
-      title: story.title,
-      description: `A story about ${story.topic}`,
-      type: 'article',
-    },
-  };
-}
-```
-
-### Document Text Extraction
-
-Server-side extraction using established libraries:
-
-- **PDF**: `pdf-parse` — extracts text content from PDF files
-- **DOCX**: `mammoth` — converts DOCX to plain text
-- **PPTX**: `officegen` or custom XML parsing of the Open XML format
-
-The extracted text is passed to the intake system prompt as context, allowing Claude to identify signals already present in the document.
-
-### PDF Export Approach
-
-Using a print-optimized HTML template rendered to PDF via `puppeteer` or `@react-pdf/renderer`:
-
-**Recommended approach**: Server-side HTML → PDF via Puppeteer (headless Chrome on Vercel):
-1. Render a Next.js page with print-specific styles (light background, serif font, A4 dimensions)
-2. Use Puppeteer to capture as PDF
-3. Return the PDF binary
-
-This ensures the designed typography and layout are preserved exactly as intended. The print template is a separate component with its own styling independent of the dark in-app theme.
-
-### Version History for Revert
-
-When a full regeneration is requested, the current `story_content` array is pushed to `previous_versions` before being replaced. This enables simple revert:
-
-```typescript
-// On regeneration:
-await supabase.from('stories').update({
-  previous_versions: [...story.previousVersions, story.storyContent],
-  story_content: newStoryContent,
-});
-```
-
-### Image Generation Stub
-
-In v1, image generation is architecturally present but stubbed:
-
-```typescript
-// lib/ai/images.ts
-export async function generateChapterImage(
-  imagePrompt: string,
-  stylePrompt: string
-): Promise<string | null> {
-  // STUB: Return null in v1
-  // When wired in, this will call Replicate/OpenAI and return a URL
-  return null;
-}
-```
-
-The schema stores `image_prompt` (always generated) and `image_url` (null until image generation is wired in). The reader view conditionally renders images only when `image_url` is present.
-
-## Sequence Diagrams
-
-### Intake → Generation Flow
-
-```
-Creator          Next.js API         Claude API        Supabase
-  │                  │                   │                │
-  │─── New Story ───▶│                   │                │
-  │                  │────── INSERT ─────────────────────▶│
-  │                  │◀───── story id ───────────────────│
-  │◀── Story ID ────│                   │                │
-  │                  │                   │                │
-  │─── Message ────▶│                   │                │
-  │                  │─── Stream (intake prompt + msg) ──▶│
-  │                  │◀── Token stream ──│                │
-  │◀── SSE tokens ──│                   │                │
-  │                  │                   │                │
-  │  ... (3-10 exchanges) ...           │                │
-  │                  │                   │                │
-  │── "Generate" ──▶│                   │                │
-  │                  │── UPDATE signals ─────────────────▶│
-  │                  │                   │                │
-  │◀─ Transition ───│                   │                │
-  │                  │─── Stream (story prompt + signals)▶│
-  │                  │◀── Token stream ──│                │
-  │◀── SSE chapters─│                   │                │
-  │                  │                   │                │
-  │                  │── UPDATE story_content ──────────▶│
-  │◀─ Complete ─────│                   │                │
-```
-
-### Share Link Reader Flow
-
-```
-Reader           Next.js (SSR)        Supabase
-  │                  │                   │
-  │── GET /read/abc ▶│                   │
-  │                  │── SELECT by share_token ─────────▶│
-  │                  │◀── story data ───────────────────│
-  │                  │                   │
-  │                  │── (check share_active) ──         │
-  │                  │                   │
-  │◀── SSR HTML ────│  (with OG metadata)               │
-  │                  │                   │
-  │── (hydrate, begin paced reading) ── │
-```
-
-## Infrastructure
-
-### Environment Variables
-
-```
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Anthropic
-ANTHROPIC_API_KEY=
-
-# Image Generation (stubbed in v1)
-REPLICATE_API_TOKEN=
-
-# App
-NEXT_PUBLIC_APP_URL=
-```
-
-### Vercel Configuration
-
-- **Runtime**: Node.js 20
-- **Function timeout**: 60 seconds (Pro plan) for streaming generation
-- **Edge functions**: Not used (Claude API calls require Node.js runtime for streaming)
-- **Environment**: Production + Preview branches
-
-### Supabase Configuration
-
-- **Auth providers**: Email/password (v1), Google OAuth (optional)
-- **Storage bucket**: `documents` — for uploaded source files
-- **RLS**: Enabled on all tables
-- **Realtime**: Not needed in v1
-
-## Non-Functional Considerations
-
-### Performance
-- Reader view is server-side rendered for instant load (<1s TTFB)
-- Streaming responses begin delivering content within 2 seconds
-- Story list pagination if needed (deferred until >50 stories per user)
-
-### Security
-- All API routes validate auth via Supabase session
-- Share token lookups only return story content, never creator data
-- Document uploads are validated for file type and size before processing
-- API keys are server-side only, never exposed to client
-
-### Cost Estimation
-- Claude API: ~$0.05-0.15 per story generation (claude-sonnet-4-5)
-- Claude API: ~$0.01-0.03 per intake message
-- Claude API: ~$0.03-0.08 per chapter refinement
-- Supabase: Free tier during development, $25/month Pro
-- Vercel: Free tier during development, $20/month Pro for 60s function timeout
-- Total per-story cost: ~$0.10-0.30 including intake + generation + 1-2 refinements
-
-## Components and Interfaces
-
-### IntakeChat Component
-
-**Purpose**: Manages the conversational intake interview between the Creator and the Intake_Engine.
-
-**Interface**:
-```typescript
-interface IntakeChatProps {
-  storyId: string;
-  initialMessages?: IntakeMessage[];
-  initialSignals?: IntakeSignals;
-  onComplete: (signals: IntakeSignals) => void;
-}
-```
-
-**Behavior**:
-- Renders a chat interface with message bubbles and a text input
-- Includes a subtle document upload affordance (not a prominent fork)
-- Streams AI responses via the `/api/intake/chat` endpoint
-- Tracks signal completion state and surfaces a "Generate Story" action when minimum viable intake (topic + desired shift) is met
-- Persists messages to the story record on each exchange
-- Handles session resumption if the Creator returns to an incomplete intake
-
-### DocumentUpload Component
-
-**Purpose**: Handles optional document upload during intake, with file validation and upload progress.
-
-**Interface**:
-```typescript
-interface DocumentUploadProps {
-  storyId: string;
-  onUploadComplete: (result: { documentUrl: string; extractedText: string; inferredSignals: Partial<IntakeSignals> }) => void;
-  onUploadError: (error: string) => void;
-}
-```
-
-**Behavior**:
-- Accepts PDF, PPTX, DOCX files up to 20MB
-- Validates file type and size client-side before upload
-- Uploads to Supabase Storage via the `/api/documents/upload` route
-- Displays upload progress and acknowledgment message on success
-- Returns extracted text and inferred signals to the parent intake flow
-
-### GenerationTransition Component
-
-**Purpose**: Renders the visually distinct transition moment between intake completion and story streaming.
-
-**Interface**:
-```typescript
-interface GenerationTransitionProps {
-  isActive: boolean;
-  onStreamStart: () => void;
-}
-```
-
-**Behavior**:
-- Displays an animated transition state (Framer Motion) lasting at least 2 seconds
-- Communicates that the story is being crafted (editorial copy, not a spinner)
-- Transitions seamlessly into the streaming story view when tokens begin arriving
-
-### StoryView Component
-
-**Purpose**: Displays the complete generated story with chapter cards, refinement access, and sharing/export controls.
-
-**Interface**:
-```typescript
-interface StoryViewProps {
-  story: Story;
-  onRefineChapter: (chapterIndex: number, direction: string) => void;
-  onRegenerate: () => void;
-  onStyleChange: (style: VisualStyle) => void;
-}
-```
-
-**Behavior**:
-- Renders all chapters with their titles and bodies
-- Each chapter has a refinement affordance (opens conversational refinement)
-- Displays visual style selector and visuals toggle
-- Provides share link management and PDF export actions
-- Shows streaming content during generation/refinement
-
-### RefinementChat Component
-
-**Purpose**: Provides a conversational interface for chapter-level refinement directions.
-
-**Interface**:
-```typescript
-interface RefinementChatProps {
-  storyId: string;
-  chapterIndex: number;
-  currentChapter: Chapter;
-  allChapters: Chapter[];
-  onRefinementComplete: (revisedChapter: Chapter) => void;
-}
-```
-
-**Behavior**:
-- Accepts natural language direction (max 500 characters)
-- Streams the revised chapter via `/api/stories/refine`
-- Shows the revised chapter alongside the original for comparison
-- Allows the Creator to accept, request further refinement, or revert
-
-### ReaderExperience Component
-
-**Purpose**: The paced, immersive reading container for shared stories.
-
-**Interface**:
-```typescript
-interface ReaderExperienceProps {
-  story: Story;
-}
-```
-
-**Behavior**:
-- Reveals one chapter at a time with Framer Motion transitions (600-1200ms)
-- Provides a visible prompt to advance between chapters
-- Renders with dark background, warm palette, serif typeface
-- Conditionally shows images when `imageUrl` is present and `visualsEnabled` is true
-- Maximum content width of 720px, no navigation chrome
-- No creator controls, no account prompts, no branding
-
-### ChapterReveal Component
-
-**Purpose**: Handles the animated reveal of a single chapter within the reading experience.
-
-**Interface**:
-```typescript
-interface ChapterRevealProps {
-  chapter: Chapter;
-  isActive: boolean;
-  showVisuals: boolean;
-  onComplete: () => void;
-}
-```
-
-**Behavior**:
-- Fades in the chapter title, then body text
-- If an image is available and visuals are enabled, reveals it within the chapter body flow
-- Calls `onComplete` when the reader signals they're ready to advance
-
-### StoryList Component
-
-**Purpose**: Displays the Creator's stories in their dashboard, sorted by last updated.
-
-**Interface**:
-```typescript
-interface StoryListProps {
-  stories: Story[];
-  onSelect: (storyId: string) => void;
-  onDelete: (storyId: string) => void;
-  onToggleShare: (storyId: string, active: boolean) => void;
-}
-```
-
-**Behavior**:
-- Renders stories as cards with title, topic, dates, and share status
-- Sorted by `updatedAt` descending
-- Displays empty state with prompt to create first story when list is empty
-- Delete action requires confirmation before proceeding
-
-### StyleSelector Component
-
-**Purpose**: Presents the four visual style options for the Creator to choose from.
-
-**Interface**:
-```typescript
-interface StyleSelectorProps {
-  currentStyle: VisualStyle;
-  onChange: (style: VisualStyle) => void;
-  disabled?: boolean;
-}
-```
-
-**Behavior**:
-- Shows four options: watercolor, manga, flat, ink sketch
-- Each option has a visual preview swatch or icon
-- Highlights the current selection
-- Warns if changing style post-generation will trigger image prompt regeneration
-
-### ShareControls Component
-
-**Purpose**: Manages share link activation, deactivation, and URL copying.
-
-**Interface**:
-```typescript
-interface ShareControlsProps {
-  storyId: string;
-  shareToken: string;
-  shareActive: boolean;
-  onToggle: (active: boolean) => void;
-}
-```
-
-**Behavior**:
-- Toggle to activate/deactivate sharing
-- Displays and allows copying of the share URL when active
-- Confirms deactivation with a note that existing links will stop working
-
-## Error Handling
-
-### API Route Error Handling
-
-All API routes follow a consistent error response pattern:
-
-```typescript
-interface ApiError {
-  error: string;
-  code: 'AUTH_REQUIRED' | 'NOT_FOUND' | 'VALIDATION_ERROR' | 'GENERATION_FAILED' | 'UPLOAD_FAILED' | 'RATE_LIMITED';
-  details?: string;
-}
-```
-
-**Authentication errors**: Return 401 with `AUTH_REQUIRED` code. Client redirects to login.
-
-**Validation errors**: Return 400 with `VALIDATION_ERROR` code and specific field details.
-
-**Generation failures**: 
-- If streaming has not begun: return 500 with `GENERATION_FAILED` code
-- If streaming has begun: send an error SSE event (`{"type": "error", "message": "..."}`) and close the stream
-- Any chapters already fully generated are preserved in the database
-
-**Document upload failures**:
-- File too large (>20MB): return 413 with size limit message
-- Invalid format: return 415 with accepted formats message  
-- Extraction failure: return 200 with `extractedText: null` and an indication that processing failed (interview continues without document context)
-
-**Rate limiting**: Claude API failures due to rate limits return 429 with retry-after guidance.
-
-### Client-Side Error Recovery
-
-- **Intake session loss**: Messages are persisted to Supabase on each exchange. On reconnect, the intake resumes from the last saved state.
-- **Generation timeout**: If no SSE events arrive for 60 seconds, the client displays an error and offers retry.
-- **Network disconnection during streaming**: The client detects stream closure, preserves any content received, and offers to resume or retry.
-- **PDF generation failure**: Client displays error toast with retry option. No partial PDF is delivered.
 
 ## Correctness Properties
 
-### Property 1: Story Integrity Invariants
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-**Validates: Requirements 4.1, 4.7, 5.2, 6.1, 6.3**
+### Property 1: WCAG Contrast Ratio Compliance
 
-1. A story's `story_content` array always contains between 0 chapters (pre-generation) and 5 chapters (post-generation). It never exceeds 5.
-2. Every chapter in `story_content` has non-empty `title`, `body`, and `imagePrompt` fields once generation is complete.
-3. The `visual_style` field always contains one of the four valid enum values. Default is `watercolor`.
-4. A story's `status` follows the state machine: `intake` → `generating` → `complete` | `error`. It cannot regress (except `error` → `generating` on retry).
-5. The `share_token` is unique across all stories and is never null (generated on story creation, not on share activation).
-6. `previous_versions` accumulates but never loses entries — versions are append-only.
+*For any* text-on-background color token pairing defined in the design token system (both light and dark modes), the computed contrast ratio SHALL be at least 4.5:1 for text sizes below 18px and at least 3:1 for text sizes 18px or above.
 
-### Property 2: Intake Signal Invariants
+**Validates: Requirements 2.6**
 
-**Validates: Requirements 2.3, 2.6, 2.8, 3.7**
+### Property 2: Reduced Motion Disables All Entrance Animations
 
-1. A story cannot transition from `intake` to `generating` status unless `intake_signals` contains at minimum a non-empty `topic` value.
-2. The `intake_transcript` is append-only during an active intake session — messages are never deleted or reordered.
-3. If a document is uploaded, `source_document_url` and `source_document_type` are both set or both null.
+*For any* component that uses an entrance animation (opacity fade, translateY slide, scale), when the `prefers-reduced-motion: reduce` media query is active, the element SHALL appear in its final rendered state with zero animation duration and zero transition duration.
 
-### Property 3: Sharing Invariants
+**Validates: Requirements 5.4, 7.4, 8.7**
 
-**Validates: Requirements 8.1, 8.2, 8.4, 8.5**
+### Property 3: Opening State Irreversibility
 
-1. A reader can only access a story via share token when `share_active = true`. Deactivating sharing immediately blocks access.
-2. The share URL path (`/read/[shareToken]`) never reveals the story ID or creator identity.
-3. Invalid or non-existent share tokens produce the same response as deactivated tokens (no information leakage).
+*For any* intake session where the creator has submitted at least one message, the opening state (headline + subtitle) SHALL never be rendered again regardless of subsequent user actions within that session.
 
-### Property 4: Refinement Invariants
+**Validates: Requirements 7.2**
 
-**Validates: Requirements 5.1, 5.2, 5.5**
+### Property 4: Exchange Typography Invariant
 
-1. When a chapter is refined, only that chapter's content changes. Other chapters' `body` and `title` fields remain byte-for-byte identical.
-2. Before a full regeneration overwrites `story_content`, the current content is pushed to `previous_versions`.
-3. A refinement cannot be applied to a story with status other than `complete`.
+*For any* non-empty exchange list of length N, the most recent AI question SHALL render at font-size 20px with `--text-primary` color, and all N-1 preceding AI questions SHALL render at font-size 13px with `--text-muted` color, with creator answers at 13px in `--text-secondary` color.
+
+**Validates: Requirements 8.2, 8.3**
+
+### Property 5: Bottom-Up Exchange Ordering
+
+*For any* list of exchanges rendered in the intake conversation, the visual ordering SHALL place the newest exchange closest to the input bar and all previous exchanges above it in reverse-chronological order (most recent at bottom).
+
+**Validates: Requirements 8.1**
+
+### Property 6: Auto-Scroll on Overflow
+
+*For any* exchange list that exceeds the visible height of the conversation container, the newest exchange SHALL be scrolled into view so that it is visible without manual user scrolling.
+
+**Validates: Requirements 8.6**
+
+### Property 7: Progress Indicator Segment State Correctness
+
+*For any* integer `currentStep` in range [0, 3] representing the number of completed intake questions, the progress indicator SHALL render segments[0..currentStep-1] as "done" (filled with `--progress-done`), segments[currentStep] as "active" (filled with `--progress-active`), and segments[currentStep+1..3] as "empty" (filled with `--progress-empty`).
+
+**Validates: Requirements 9.2, 9.6**
+
+### Property 8: File Upload Validation
+
+*For any* file selected via the attach button, if the file size exceeds 20 MB OR the file type is not one of [PDF, PPTX, DOCX], the system SHALL reject the file without initiating an upload and SHALL display an inline error message.
+
+**Validates: Requirements 10.5**
+
+### Property 9: Textarea Auto-Expand Clamping
+
+*For any* text input in the intake textarea, the rendered height SHALL equal min(scrollHeight, 5 lines) with a minimum of 1 line (~38px). When content exceeds 5 lines, the textarea SHALL scroll internally rather than growing further.
+
+**Validates: Requirements 10.6**
+
+### Property 10: Send Button Disabled State
+
+*For any* string composed entirely of whitespace characters (including empty string), the send button SHALL render at 0.35 opacity and be non-interactive. *For any* string containing at least one non-whitespace character, the send button SHALL render at full opacity and be interactive.
+
+**Validates: Requirements 10.10, 10.11**
+
+### Property 11: AI Response Format Constraints
+
+*For any* response produced by the intake engine, the response SHALL contain exactly one interrogative sentence (ending with "?"), the total word count SHALL NOT exceed 20, and the response SHALL NOT contain affirmation phrases ("Great", "Got it", "Perfect", "Interesting", "That's helpful"), markdown formatting characters (*, **, -, bullet points), or em dashes (—).
+
+**Validates: Requirements 11.1, 11.2, 11.6**
+
+## Error Handling
+
+### Authentication Errors
+
+| Scenario | Behavior |
+|----------|----------|
+| Unauthenticated access to `/stories/new` | Redirect to `/auth/login` before rendering any intake UI |
+| Session expires mid-conversation | Show non-blocking error toast; preserve local state; prompt re-auth |
+| Supabase auth callback failure | Display error on login page with retry action |
+
+### Intake Chat Errors
+
+| Scenario | Behavior |
+|----------|----------|
+| Network failure during streaming | Show inline error below conversation; auto-retry once after 2s; if still failing, show "Try again" button |
+| AI response timeout (>30s) | Abort stream, show "Response took too long. Try again." |
+| Malformed signal extraction | Silently ignore; continue conversation without updating signals |
+| API returns 429 (rate limit) | Show "Please wait a moment" with countdown |
+
+### File Upload Errors
+
+| Scenario | Behavior |
+|----------|----------|
+| File too large (>20MB) | Reject immediately client-side; show inline error "File must be under 20 MB" auto-dismissing after 5s |
+| Unsupported format | Reject immediately client-side; show inline error "Only PDF, PPTX, and DOCX files are supported" auto-dismissing after 5s |
+| Upload network failure | Show error with retry button |
+| Document parsing failure (server) | Show "Could not read document. Try a different file." |
+
+### Navigation Errors
+
+| Scenario | Behavior |
+|----------|----------|
+| Story creation fails on mount | Show centered error state with "Try Again" button |
+| Database write failure (transcript persist) | Log error; do NOT block conversation flow; retry silently on next exchange |
+
+### CSS Token Fallbacks
+
+All CSS custom properties should include fallback values in their `var()` calls for resilience:
+```css
+background-color: var(--surface-page, #f7f6f2);
+color: var(--text-primary, #111111);
+```
 
 ## Testing Strategy
 
-### Unit Tests
+### Unit Tests (Example-Based)
 
-**Location**: `__tests__/unit/`
+Unit tests cover specific UI states, interactions, and rendering:
 
-- **Signal extraction logic** (`lib/documents/parse.ts`): Test that document text produces expected inferred signals
-- **Stream utilities** (`lib/ai/stream.ts`): Test SSE formatting, error event injection, stream closure
-- **Type validation**: Test that API request/response shapes match TypeScript interfaces
-- **Story state machine**: Test valid/invalid status transitions
+- **TopNav**: Renders on creator routes, absent on reader routes; buttons navigate correctly; responsive padding applies at breakpoints
+- **OpeningState**: Renders when no messages; disappears after first submit; centered and width-constrained
+- **InputBar**: Enter submits, Shift+Enter inserts newline; attach button opens file picker with correct accept filter; focus changes border color
+- **ProgressIndicator**: Renders 4 segments; hidden before first exchange; shows after first exchange; segments correspond to fixed question order
+- **ExchangeList**: Renders correct DOM structure; dividers appear between exchanges
+- **Design tokens**: Smoke tests verifying all CSS custom properties are defined in `globals.css`
+
+### Property-Based Tests
+
+Property-based tests validate universal correctness properties using [fast-check](https://github.com/dubzzz/fast-check) (already compatible with the vitest setup).
+
+**Configuration:**
+- Minimum 100 iterations per property test
+- Each test tagged with: `Feature: waggle-dance, Property {N}: {title}`
+
+| Property | Generator Strategy |
+|----------|-------------------|
+| P1: Contrast ratio | Generate all token pairings from defined color sets; compute relative luminance |
+| P2: Reduced motion | Generate random component animation configs; verify duration=0 when reduced motion is mocked |
+| P3: Opening state irreversibility | Generate random sequences of 1–10 user messages; verify opening state stays hidden |
+| P4: Exchange typography | Generate exchange lists of length 1–20; verify hero/past typography assignment |
+| P5: Bottom-up ordering | Generate exchange lists of length 1–20; verify visual order matches reverse-chronological |
+| P6: Auto-scroll | Generate exchange lists exceeding container height; verify scroll position |
+| P7: Progress segments | Generate currentStep ∈ {0,1,2,3}; verify segment states |
+| P8: File validation | Generate files with random sizes (0–100MB) and types (valid + invalid); verify accept/reject |
+| P9: Textarea clamping | Generate strings with 0–20 newlines; verify height bounds |
+| P10: Send button state | Generate strings of whitespace-only and mixed content; verify disabled/enabled |
+| P11: AI response format | Generate/mock AI responses; verify single question, ≤20 words, no forbidden patterns |
 
 ### Integration Tests
 
-**Location**: `__tests__/integration/`
+- **Full intake flow**: Send 4 messages through the real `/api/intake/chat` endpoint; verify signals are extracted and `[SIGNALS_READY]` is emitted
+- **Auth guard**: Verify unauthenticated requests to `/api/intake/chat` return 401
+- **File upload**: Upload valid and invalid files to `/api/documents/upload`; verify accept/reject behavior
 
-- **Intake API route**: Mock Claude responses, verify SSE stream format, signal updates, and database persistence
-- **Generation API route**: Mock Claude responses, verify chapter parsing from stream, database write on completion
-- **Refinement API route**: Mock Claude responses, verify single-chapter update, version preservation
-- **Document upload route**: Test file validation, mock extraction, verify storage upload
-- **Auth middleware**: Test protected route redirect, session persistence, public route passthrough
-- **PDF export**: Verify PDF is generated with correct structure (chapter count, page count)
+### Visual Regression
 
-### End-to-End Tests
-
-**Location**: `__tests__/e2e/`
-
-**Framework**: Playwright
-
-- **Full intake flow**: Sign in → new story → intake conversation → generate → view story
-- **Refinement flow**: Open existing story → refine chapter → verify update
-- **Share flow**: Activate sharing → open share link in incognito → verify reader experience
-- **Export flow**: Generate story → export PDF → verify download
-- **Auth flow**: Unauthenticated access → redirect → sign in → return to intended page
-- **Reader experience**: Open share link → verify paced chapter reveal → navigate all chapters
-
-### AI Output Quality Tests
-
-**Location**: `__tests__/quality/` (run manually, not in CI)
-
-- **Story structure**: Verify generated stories contain 3-5 chapters within word count bounds
-- **Metaphor check**: Verify the topic is not literally named in story text
-- **Framework invisibility**: Verify no framework names appear in output
-- **Image prompt presence**: Verify each chapter has a non-empty image prompt
-- **Emotional arc**: Manual review checklist for story quality (not automated)
-
-### Test Infrastructure
-
-- **Test runner**: Vitest (compatible with Next.js, fast, TypeScript-native)
-- **E2E**: Playwright
-- **Mocking**: MSW (Mock Service Worker) for API mocking in integration tests
-- **Database**: Supabase local development via `supabase start` for integration tests
-- **CI**: GitHub Actions running unit + integration on every PR, E2E on merge to main
+- Snapshot the TopNav at 390px, 768px, and 1280px viewports
+- Snapshot the intake screen in opening state and with 3 exchanges
+- Snapshot progress indicator in all 5 possible step states (0–4 completed)

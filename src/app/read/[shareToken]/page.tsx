@@ -46,8 +46,12 @@ export default async function SharePage({ params }: SharePageProps) {
   // Non-specific unavailable message for invalid, deactivated, or non-existent tokens
   if (!story) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-surface)]">
-        <p className="text-[var(--color-text-muted)] font-serif text-lg">
+      <div
+        data-mode="dark"
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: '#000000' }}
+      >
+        <p style={{ color: 'rgba(255,255,255,0.32)', fontFamily: 'var(--font-reading)', fontSize: 'var(--text-lg)' }}>
           This story is not available.
         </p>
       </div>

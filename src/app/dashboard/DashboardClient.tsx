@@ -40,17 +40,41 @@ export function DashboardClient({ stories }: DashboardClientProps) {
 
   if (stories.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen px-4">
+      <div className="flex flex-col items-center justify-center px-4" style={{ minHeight: 'calc(100vh - 48px)' }}>
         <div className="text-center max-w-sm">
-          <h2 className="text-[24px] font-semibold text-[var(--color-text-primary)] mb-2 tracking-tight">
+          <h2
+            className="mb-2 tracking-tight"
+            style={{
+              fontSize: 'var(--text-xl)',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}
+          >
             Your Library
           </h2>
-          <p className="text-[15px] text-[var(--color-text-secondary)] mb-8 leading-relaxed">
+          <p
+            className="mb-8 leading-relaxed"
+            style={{
+              fontSize: 'var(--text-base)',
+              color: 'var(--text-secondary)',
+            }}
+          >
             Stories you create will appear here. Start with the idea you need to
             communicate.
           </p>
-          <Link href="/stories/new">
-            <Button size="lg">Create Story</Button>
+          <Link
+            href="/stories/new"
+            className="inline-flex items-center justify-center font-medium transition-all duration-150"
+            style={{
+              background: 'var(--accent)',
+              color: '#ffffff',
+              borderRadius: '9999px',
+              padding: '10px 24px',
+              fontSize: 'var(--text-base)',
+              minHeight: '44px',
+            }}
+          >
+            Create Story
           </Link>
         </div>
       </div>
@@ -58,14 +82,23 @@ export function DashboardClient({ stories }: DashboardClientProps) {
   }
 
   return (
-    <div className="min-h-screen">
+    <div style={{ minHeight: 'calc(100vh - 48px)' }}>
       {/* Header */}
-      <header className="sticky top-0 z-10 backdrop-blur-xl bg-[var(--color-bg-primary)]/80 border-b border-[var(--color-separator)] px-6 py-4">
-        <h1 className="text-[20px] font-semibold tracking-tight">Library</h1>
+      <header className="px-6 py-5">
+        <h1
+          className="tracking-tight"
+          style={{
+            fontSize: 'var(--text-lg)',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+          }}
+        >
+          Library
+        </h1>
       </header>
 
       {/* Story grid */}
-      <div className="px-6 py-6">
+      <div className="px-6 pb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {stories.map((story) => {
             const displayTitle = story.title || story.topic || 'Untitled'
@@ -79,23 +112,50 @@ export function DashboardClient({ stories }: DashboardClientProps) {
                 key={story.id}
                 href={`/stories/${story.id}`}
                 className="group block"
+                aria-label={`Open story: ${displayTitle}`}
               >
-                <div className="bg-[var(--color-bg-tertiary)] rounded-[var(--radius-lg)] p-5 transition-all duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-[var(--color-bg-elevated)] hover:scale-[1.01]">
-                  <h3 className="text-[15px] font-medium text-[var(--color-text-primary)] mb-1 line-clamp-2">
+                <div
+                  className="p-5 transition-all duration-200 hover:scale-[1.01]"
+                  style={{
+                    background: 'var(--surface-card)',
+                    border: '0.5px solid var(--border-default)',
+                    borderRadius: 'var(--radius-lg)',
+                  }}
+                >
+                  <h3
+                    className="mb-1 line-clamp-2"
+                    style={{
+                      fontSize: 'var(--text-base)',
+                      fontWeight: 500,
+                      color: 'var(--text-primary)',
+                    }}
+                  >
                     {displayTitle}
                   </h3>
                   {story.title && story.topic && (
-                    <p className="text-[13px] text-[var(--color-text-tertiary)] mb-3 line-clamp-1">
+                    <p
+                      className="mb-3 line-clamp-1"
+                      style={{
+                        fontSize: 'var(--text-sm)',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
                       {story.topic}
                     </p>
                   )}
-                  <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-quaternary)]">
+                  <div
+                    className="flex items-center gap-2"
+                    style={{
+                      fontSize: 'var(--text-xs)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
                     <span>{date}</span>
                     {story.status === 'complete' && (
-                      <span className="text-[var(--color-success)]">●</span>
+                      <span style={{ color: '#30d158' }}>●</span>
                     )}
                     {story.share_active && (
-                      <span className="text-[var(--color-accent)]">shared</span>
+                      <span style={{ color: 'var(--accent)' }}>shared</span>
                     )}
                   </div>
                 </div>
@@ -111,7 +171,10 @@ export function DashboardClient({ stories }: DashboardClientProps) {
         onClose={() => setDeleteId(null)}
         title="Delete Story"
       >
-        <p className="text-[15px] text-[var(--color-text-secondary)] mb-6">
+        <p
+          className="mb-6"
+          style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}
+        >
           This will permanently delete this story and its share link.
         </p>
         <div className="flex justify-end gap-3">

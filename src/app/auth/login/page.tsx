@@ -34,7 +34,6 @@ function LoginForm() {
         setLoading(false)
         return
       }
-      // Sign in immediately after signup (since email confirmation is disabled)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -66,18 +65,32 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-6">
-      <div className="w-full max-w-[320px]">
-        <h1 className="text-[24px] font-semibold text-[var(--color-text-primary)] mb-1 text-center tracking-tight">
+    <div
+      data-mode="light"
+      className="min-h-screen flex flex-col items-center justify-center px-6"
+      style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}
+    >
+      <main id="main-content" className="w-full max-w-[320px]">
+        <h1
+          className="mb-1 text-center tracking-tight"
+          style={{ fontSize: 'var(--text-xl)', fontWeight: 600, color: 'var(--text-primary)' }}
+        >
           {isSignUp ? 'Create Account' : 'Sign In'}
         </h1>
-        <p className="text-[13px] text-[var(--color-text-tertiary)] text-center mb-8">
+        <p
+          className="text-center mb-8"
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
+        >
           {isSignUp ? 'Get started with Waggle Dance' : 'Welcome back'}
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div>
-            <label htmlFor="email" className="text-[13px] text-[var(--color-text-secondary)] mb-1.5 block">
+            <label
+              htmlFor="email"
+              className="mb-1.5 block"
+              style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}
+            >
               Email
             </label>
             <input
@@ -88,18 +101,24 @@ function LoginForm() {
               placeholder="you@example.com"
               required
               autoComplete="email"
-              className="
-                w-full rounded-[var(--radius-md)] px-3.5 py-2.5
-                bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]
-                placeholder:text-[var(--color-text-tertiary)]
-                focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]/30
-                text-[15px] min-h-[44px]
-              "
+              className="w-full px-3.5 py-2.5 min-h-[44px]"
+              style={{
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--surface-input)',
+                color: 'var(--text-primary)',
+                border: '0.5px solid var(--border-input)',
+                fontSize: 'var(--text-base)',
+                outline: 'none',
+              }}
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="text-[13px] text-[var(--color-text-secondary)] mb-1.5 block">
+            <label
+              htmlFor="password"
+              className="mb-1.5 block"
+              style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}
+            >
               Password
             </label>
             <input
@@ -110,18 +129,20 @@ function LoginForm() {
               placeholder="••••••••"
               required
               autoComplete={isSignUp ? 'new-password' : 'current-password'}
-              className="
-                w-full rounded-[var(--radius-md)] px-3.5 py-2.5
-                bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]
-                placeholder:text-[var(--color-text-tertiary)]
-                focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]/30
-                text-[15px] min-h-[44px]
-              "
+              className="w-full px-3.5 py-2.5 min-h-[44px]"
+              style={{
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--surface-input)',
+                color: 'var(--text-primary)',
+                border: '0.5px solid var(--border-input)',
+                fontSize: 'var(--text-base)',
+                outline: 'none',
+              }}
             />
           </div>
 
           {error && (
-            <p className="text-[13px] text-[var(--color-error)] text-center" role="alert">
+            <p className="text-center" style={{ fontSize: 'var(--text-sm)', color: '#ff453a' }} role="alert">
               {error}
             </p>
           )}
@@ -137,12 +158,13 @@ function LoginForm() {
             setIsSignUp(!isSignUp)
             setError(null)
           }}
-          className="w-full mt-5 text-[13px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors text-center"
+          className="w-full mt-5 transition-colors text-center min-h-[44px]"
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
         >
           {isSignUp ? 'Already have an account? Sign in' : 'Need an account? Create one'}
         </button>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
 

@@ -21,7 +21,10 @@ export function ReaderExperience({ story }: ReaderExperienceProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-surface)] flex flex-col">
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: 'var(--surface-page)', color: 'var(--text-primary)' }}
+    >
       {/* Title card for first chapter */}
       {currentChapter === 0 && (
         <motion.header
@@ -30,14 +33,17 @@ export function ReaderExperience({ story }: ReaderExperienceProps) {
           transition={{ duration: 1 }}
           className="pt-16 pb-8 px-4 text-center"
         >
-          <h1 className="font-serif text-3xl md:text-4xl text-[var(--color-text-primary)] leading-tight">
+          <h1
+            className="leading-tight text-3xl md:text-4xl"
+            style={{ fontFamily: 'var(--font-reading)', color: 'var(--text-primary)' }}
+          >
             {story.title}
           </h1>
         </motion.header>
       )}
 
       {/* Chapter content */}
-      <main className="flex-1 px-4 max-w-[720px] mx-auto w-full">
+      <main id="main-content" className="flex-1 px-4 max-w-[720px] mx-auto w-full">
         <AnimatePresence mode="wait">
           <ChapterReveal
             key={currentChapter}
@@ -56,13 +62,8 @@ export function ReaderExperience({ story }: ReaderExperienceProps) {
             animate={{ opacity: 1 }}
             transition={{ delay: 1.5, duration: 0.5 }}
             onClick={advanceChapter}
-            className="
-              inline-flex items-center gap-2 px-6 py-3
-              text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]
-              transition-colors duration-300
-              min-h-[44px]
-              font-serif text-sm
-            "
+            className="inline-flex items-center gap-2 px-6 py-3 transition-colors duration-300 min-h-[44px] text-sm"
+            style={{ fontFamily: 'var(--font-reading)', color: 'var(--text-secondary)' }}
             aria-label="Continue to next chapter"
           >
             <span>Continue</span>
@@ -86,7 +87,8 @@ export function ReaderExperience({ story }: ReaderExperienceProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 2, duration: 1 }}
-            className="text-sm text-[var(--color-text-muted)] font-serif italic"
+            className="text-sm italic"
+            style={{ fontFamily: 'var(--font-reading)', color: 'var(--text-muted)' }}
           >
             ·
           </motion.p>

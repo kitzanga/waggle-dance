@@ -37,18 +37,19 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   return (
     <dialog
       ref={dialogRef}
-      className="
-        w-full max-w-md rounded-xl p-0
-        bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]
-        border border-[var(--color-border)]
-        backdrop:bg-black/60
-      "
+      className="w-full max-w-md rounded-xl p-0 backdrop:bg-black/60"
+      style={{
+        background: 'var(--surface-card)',
+        color: 'var(--text-primary)',
+        border: '0.5px solid var(--border-default)',
+      }}
       aria-labelledby="modal-title"
     >
       <div className="p-6">
         <h2
           id="modal-title"
-          className="text-lg font-medium mb-4"
+          className="mb-4"
+          style={{ fontSize: 'var(--text-lg)', fontWeight: 500 }}
         >
           {title}
         </h2>

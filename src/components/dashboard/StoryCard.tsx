@@ -8,7 +8,7 @@ interface StoryCardProps {
   topic: string
   status: string
   shareActive: boolean
-  createdAt: string
+  createdAt?: string
   updatedAt: string
   onDelete: (id: string) => void
 }
@@ -19,7 +19,6 @@ export function StoryCard({
   topic,
   status,
   shareActive,
-  createdAt,
   updatedAt,
   onDelete,
 }: StoryCardProps) {
@@ -31,35 +30,43 @@ export function StoryCard({
   })
 
   return (
-    <div className="group relative border border-[var(--color-border-subtle)] rounded-xl p-5 bg-[var(--color-surface-raised)] hover:border-[var(--color-border)] transition-colors">
+    <div
+      className="group relative p-5 transition-all duration-200 hover:scale-[1.01]"
+      style={{
+        background: 'var(--surface-card)',
+        border: '0.5px solid var(--border-default)',
+        borderRadius: 'var(--radius-lg)',
+      }}
+    >
       <Link
         href={`/stories/${id}`}
         className="block"
         aria-label={`Open story: ${displayTitle}`}
       >
-        <h3 className="font-serif text-lg text-[var(--color-text-primary)] mb-1 line-clamp-2">
+        <h3
+          className="mb-1 line-clamp-2"
+          style={{ fontFamily: 'var(--font-reading)', fontSize: 'var(--text-lg)', color: 'var(--text-primary)' }}
+        >
           {displayTitle}
         </h3>
         {title && topic && (
-          <p className="text-sm text-[var(--color-text-muted)] mb-3 line-clamp-1">
+          <p className="mb-3 line-clamp-1" style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
             {topic}
           </p>
         )}
-        <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+        <div className="flex items-center gap-3" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>
           <span>{formattedDate}</span>
           <span
-            className={`
-              px-1.5 py-0.5 rounded
-              ${status === 'complete' ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]' : ''}
-              ${status === 'intake' ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' : ''}
-              ${status === 'error' ? 'bg-[var(--color-error)]/10 text-[var(--color-error)]' : ''}
-              ${status === 'generating' ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' : ''}
-            `}
+            className="px-1.5 py-0.5 rounded"
+            style={{
+              background: status === 'complete' ? 'rgba(48, 209, 88, 0.1)' : 'var(--accent-bg)',
+              color: status === 'complete' ? '#30d158' : status === 'error' ? '#ff453a' : 'var(--accent)',
+            }}
           >
             {status}
           </span>
           {shareActive && (
-            <span className="text-[var(--color-accent)]">shared</span>
+            <span style={{ color: 'var(--accent)' }}>shared</span>
           )}
         </div>
       </Link>
@@ -69,12 +76,8 @@ export function StoryCard({
           e.preventDefault()
           onDelete(id)
         }}
-        className="
-          absolute top-3 right-3 opacity-0 group-hover:opacity-100
-          p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-error)]
-          hover:bg-[var(--color-surface-overlay)] transition-all
-          min-h-[44px] min-w-[44px] flex items-center justify-center
-        "
+        className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-2 rounded-lg transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
+        style={{ color: 'var(--text-muted)' }}
         aria-label={`Delete story: ${displayTitle}`}
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

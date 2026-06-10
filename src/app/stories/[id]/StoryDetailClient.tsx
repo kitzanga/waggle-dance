@@ -14,7 +14,6 @@ export function StoryDetailClient({ story }: StoryDetailClientProps) {
   const supabase = createClient()
 
   async function handleRegenerate() {
-    // Push current content to previous_versions, then redirect to regenerate
     await supabase
       .from('stories')
       .update({
@@ -23,8 +22,6 @@ export function StoryDetailClient({ story }: StoryDetailClientProps) {
       })
       .eq('id', story.id)
 
-    // For now, redirect back to re-trigger generation
-    // In a full implementation, this would call the generate API directly
     router.refresh()
   }
 
@@ -57,9 +54,9 @@ export function StoryDetailClient({ story }: StoryDetailClientProps) {
 
   if (story.status !== 'complete') {
     return (
-      <div className="flex items-center justify-center min-h-screen px-4">
+      <div className="flex items-center justify-center px-4" style={{ minHeight: 'calc(100vh - 48px)' }}>
         <div className="text-center">
-          <p className="text-[var(--color-text-secondary)]">
+          <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-base)' }}>
             {story.status === 'intake'
               ? 'This story is still in the intake phase.'
               : story.status === 'generating'
@@ -72,11 +69,16 @@ export function StoryDetailClient({ story }: StoryDetailClientProps) {
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="px-4 py-3 border-b border-[var(--color-border-subtle)] flex items-center justify-between">
+    <div style={{ minHeight: 'calc(100vh - 48px)' }}>
+      <header
+        className="px-4 py-3 flex items-center justify-between"
+        style={{ borderBottom: '1px solid var(--border-default)' }}
+      >
         <button
           onClick={() => router.push('/dashboard')}
-          className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors min-h-[44px] flex items-center"
+          className="transition-colors min-h-[44px] flex items-center"
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
+          aria-label="Back to Dashboard"
         >
           ← Dashboard
         </button>

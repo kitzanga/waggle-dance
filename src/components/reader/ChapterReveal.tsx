@@ -21,7 +21,8 @@ export function ChapterReveal({ chapter, index, showVisuals }: ChapterRevealProp
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.2, duration: 0.5 }}
-        className="text-xs text-[var(--color-text-muted)] uppercase tracking-widest"
+        className="uppercase tracking-widest"
+        style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
       >
         {index + 1}
       </motion.span>
@@ -30,7 +31,8 @@ export function ChapterReveal({ chapter, index, showVisuals }: ChapterRevealProp
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.4, duration: 0.6 }}
-        className="font-serif text-2xl text-[var(--color-text-primary)] mt-3 mb-6"
+        className="mt-3 mb-6"
+        style={{ fontFamily: 'var(--font-reading)', fontSize: 'var(--text-xl)', color: 'var(--text-primary)' }}
       >
         {chapter.title}
       </motion.h2>
@@ -56,7 +58,7 @@ export function ChapterReveal({ chapter, index, showVisuals }: ChapterRevealProp
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={chapter.imageUrl}
-            alt=""
+            alt={`Illustration for chapter ${index + 1}: ${chapter.title}`}
             className="w-full h-auto"
           />
         </motion.div>

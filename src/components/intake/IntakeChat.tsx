@@ -1,11 +1,17 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useIntake } from '@/hooks/useIntake'
-import { IntakeMessage } from './IntakeMessage'
-import { DocumentUpload } from './DocumentUpload'
-import { Button } from '@/components/ui/Button'
+import { OpeningState } from './OpeningState'
+import { ExchangeList } from './ExchangeList'
+import { ProgressIndicator } from './ProgressIndicator'
+import { InputBar } from './InputBar'
 import type { IntakeSignals } from '@/types/story'
+
+interface Exchange {
+  question: string
+  answer: string | null
+}
 
 interface IntakeChatProps {
   storyId: string
@@ -20,10 +26,9 @@ export function IntakeChat({
   initialSignals,
   onComplete,
 }: IntakeChatProps) {
-  const [input, setInput] = useState('')
   const [documentContext, setDocumentContext] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const {
     messages,
@@ -39,38 +44,94 @@ export function IntakeChat({
     documentContext,
   })
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
-  useEffect(() => {
-    if (!isStreaming) textareaRef.current?.focus()
-  }, [isStreaming])
-
-  // Auto-resize textarea
-  useEffect(() => {
-    const textarea = textareaRef.current
-    if (textarea) {
-      textarea.style.height = 'auto'
-      textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px'
-    }
-  }, [input])
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    sendMessage(input.trim())
-    setInput('')
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
+  // Convert flat messages into exchange pairs
+  const exchanges: Exchange[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.role === 'assistant' && msg.content) {
+      const nextMsg = messages[i + 1]
+      exchanges.push({
+        question: msg.content,
+        answer: nextMsg?.role === 'user' ? nextMsg.content : null,
+      })
     }
   }
 
-  function handleGenerate() {
+  // If the first message is from the user (no preceding AI question), treat it differently
+  const hasStarted = messages.length > 0
+  const showOpening = !hasStarted
+
+  // Calculate progress from signals
+  const completedSteps = [
+    signals.topic,
+    signals.desiredShift,
+    signals.audiencePortrait,
+    signals.resistancePattern,
+  ].filter(Boolean).length
+
+  function handleSubmit(text: string) {
+    sendMessage(text)
+  }
+
+  const handleAttach = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ]
+    if (!validTypes.includes(file.type)) {
+      setAttachError('Only PDF, PPTX, and DOCX files are supported')
+      setTimeout(() => setAttachError(null), 5000)
+      e.target.value = ''
+      return
+    }
+
+    // Validate file size (20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      setAttachError('File must be under 20 MB')
+      setTimeout(() => setAttachError(null), 5000)
+      e.target.value = ''
+      return
+    }
+
+    // Upload the file
+    uploadFile(file)
+    e.target.value = ''
+  }
+
+  async function uploadFile(file: File) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('storyId', storyId)
+
+    try {
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      if (response.ok) {
+        const result = await response.json()
+        setDocumentContext(result.extractedText)
+      } else {
+        setAttachError('Could not read document. Try a different file.')
+        setTimeout(() => setAttachError(null), 5000)
+      }
+    } catch {
+      setAttachError('Upload failed. Please try again.')
+      setTimeout(() => setAttachError(null), 5000)
+    }
+  }
+
+  // When ready to generate, auto-complete
+  if (readyToGenerate) {
     const finalSignals: IntakeSignals = {
       topic: signals.topic || '',
       tension: signals.tension || null,
@@ -79,97 +140,57 @@ export function IntakeChat({
       stakes: signals.stakes || null,
       desiredShift: signals.desiredShift || null,
     }
-    onComplete(finalSignals)
+    // Use a timeout to avoid calling during render
+    setTimeout(() => onComplete(finalSignals), 0)
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 48px)' }}>
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.pptx"
+        onChange={handleFileChange}
+        className="hidden"
+        aria-hidden="true"
+      />
+
       {/* Conversation area */}
-      <div className="flex-1 overflow-y-auto">
-        {messages.length === 0 && (
-          <div className="flex items-center justify-center min-h-[60vh] px-4">
-            <div className="text-center max-w-md">
-              <h2 className="text-[20px] font-medium text-[var(--color-text-primary)] mb-2">
-                What idea do you need to communicate?
-              </h2>
-              <p className="text-[13px] text-[var(--color-text-tertiary)]">
-                Describe the topic and who needs to hear it. I&apos;ll help you find the story.
-              </p>
-            </div>
-          </div>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {showOpening ? (
+          <OpeningState visible={true} />
+        ) : (
+          <ExchangeList exchanges={exchanges} isStreaming={isStreaming} />
         )}
-
-        {messages.map((msg, i) => (
-          <IntakeMessage key={i} message={msg} />
-        ))}
-
-        <div ref={messagesEndRef} />
       </div>
-
-      {/* Generate button */}
-      {readyToGenerate && (
-        <div className="px-6 py-3 border-t border-[var(--color-separator)]">
-          <div className="max-w-[640px] mx-auto">
-            <Button onClick={handleGenerate} className="w-full" size="lg">
-              Generate Story
-            </Button>
-          </div>
-        </div>
-      )}
 
       {/* Error */}
       {error && (
         <div className="px-6 py-2">
-          <p className="text-[13px] text-[var(--color-error)] text-center">{error}</p>
+          <p
+            className="text-center"
+            style={{ fontSize: 'var(--text-xs)', color: '#ff453a' }}
+          >
+            {error}
+          </p>
         </div>
       )}
 
-      {/* Input area */}
-      <div className="border-t border-[var(--color-separator)] px-6 py-4">
-        <div className="max-w-[640px] mx-auto">
-          <form onSubmit={handleSubmit} className="flex items-end gap-3">
-            <DocumentUpload
-              storyId={storyId}
-              onUploadComplete={(result) => setDocumentContext(result.extractedText)}
-              onUploadError={(err) => console.error('Upload error:', err)}
-            />
+      {/* Progress indicator */}
+      <ProgressIndicator
+        currentStep={completedSteps}
+        completedSteps={completedSteps}
+        visible={hasStarted}
+      />
 
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your response..."
-                disabled={isStreaming}
-                rows={1}
-                className="
-                  w-full resize-none rounded-[var(--radius-md)] px-4 py-3
-                  bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]
-                  placeholder:text-[var(--color-text-tertiary)]
-                  focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]/30
-                  transition-all duration-150
-                  text-[15px] leading-[1.47]
-                  min-h-[44px] max-h-[160px]
-                  disabled:opacity-40
-                "
-                aria-label="Your response"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              disabled={!input.trim() || isStreaming}
-              size="md"
-              aria-label="Send"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-              </svg>
-            </Button>
-          </form>
-        </div>
-      </div>
+      {/* Input bar */}
+      <InputBar
+        onSubmit={handleSubmit}
+        onAttach={handleAttach}
+        isDisabled={isStreaming}
+        attachError={attachError}
+      />
     </div>
   )
 }
