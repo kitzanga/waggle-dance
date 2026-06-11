@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useIntake } from '@/hooks/useIntake'
 import { OpeningState } from './OpeningState'
 import { ExchangeList } from './ExchangeList'
@@ -154,8 +154,10 @@ export function IntakeChat({
     }
   }
 
-  // When ready to generate, auto-complete
-  if (readyToGenerate) {
+  // When ready to generate, wait so the user can read the final summary
+  // before transitioning to the next phase.
+  useEffect(() => {
+    if (!readyToGenerate) return
     const finalSignals: IntakeSignals = {
       topic: signals.topic || '',
       tension: signals.tension || null,
@@ -164,9 +166,9 @@ export function IntakeChat({
       stakes: signals.stakes || null,
       desiredShift: signals.desiredShift || null,
     }
-    // Use a timeout to avoid calling during render
-    setTimeout(() => onComplete(finalSignals), 0)
-  }
+    const timer = setTimeout(() => onComplete(finalSignals), 3000)
+    return () => clearTimeout(timer)
+  }, [readyToGenerate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 48px)' }}>
