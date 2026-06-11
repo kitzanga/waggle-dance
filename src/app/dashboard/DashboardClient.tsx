@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { StoryCard } from '@/components/dashboard/StoryCard'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 
@@ -25,6 +26,11 @@ export function DashboardClient({ stories }: DashboardClientProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
   const router = useRouter()
+
+  const storyToDelete = deleteId
+    ? stories.find((s) => s.id === deleteId)
+    : null
+  const deleteTitle = storyToDelete?.title || storyToDelete?.topic || 'Untitled'
 
   async function handleDelete() {
     if (!deleteId) return
@@ -100,68 +106,18 @@ export function DashboardClient({ stories }: DashboardClientProps) {
       {/* Story grid */}
       <div className="px-6 pb-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {stories.map((story) => {
-            const displayTitle = story.title || story.topic || 'Untitled'
-            const date = new Date(story.updated_at).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-            })
-
-            return (
-              <Link
-                key={story.id}
-                href={`/stories/${story.id}`}
-                className="group block"
-                aria-label={`Open story: ${displayTitle}`}
-              >
-                <div
-                  className="p-5 transition-all duration-200 hover:scale-[1.01]"
-                  style={{
-                    background: 'var(--surface-card)',
-                    border: '0.5px solid var(--border-default)',
-                    borderRadius: 'var(--radius-lg)',
-                  }}
-                >
-                  <h3
-                    className="mb-1 line-clamp-2"
-                    style={{
-                      fontSize: 'var(--text-base)',
-                      fontWeight: 500,
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    {displayTitle}
-                  </h3>
-                  {story.title && story.topic && (
-                    <p
-                      className="mb-3 line-clamp-1"
-                      style={{
-                        fontSize: 'var(--text-sm)',
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      {story.topic}
-                    </p>
-                  )}
-                  <div
-                    className="flex items-center gap-2"
-                    style={{
-                      fontSize: 'var(--text-xs)',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    <span>{date}</span>
-                    {story.status === 'complete' && (
-                      <span style={{ color: '#30d158' }}>●</span>
-                    )}
-                    {story.share_active && (
-                      <span style={{ color: 'var(--accent)' }}>shared</span>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            )
-          })}
+          {stories.map((story) => (
+            <StoryCard
+              key={story.id}
+              id={story.id}
+              title={story.title}
+              topic={story.topic}
+              status={story.status}
+              shareActive={story.share_active}
+              updatedAt={story.updated_at}
+              onDelete={setDeleteId}
+            />
+          ))}
         </div>
       </div>
 
@@ -172,10 +128,20 @@ export function DashboardClient({ stories }: DashboardClientProps) {
         title="Delete Story"
       >
         <p
-          className="mb-6"
+          className="mb-1"
           style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}
         >
-          This will permanently delete this story and its share link.
+          Are you sure you want to delete{' '}
+          <strong style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+            {deleteTitle}
+          </strong>
+          ?
+        </p>
+        <p
+          className="mb-6"
+          style={{ fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}
+        >
+          This can&apos;t be undone. The story and its share link will be permanently removed.
         </p>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" size="sm" onClick={() => setDeleteId(null)}>
