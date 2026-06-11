@@ -36,12 +36,25 @@ export async function POST(request: Request) {
     )
   }
 
-  // Build conversation history for Claude
+  // Build conversation history for Claude.
+  // The opening "What's the idea?" is shown in the UI but NOT stored in messages.
+  // We prepend it as a synthetic assistant message so Claude knows to proceed
+  // to question 2 (it follows a strict 4-question sequence).
   const systemPrompt = buildIntakeSystemPrompt(signals, documentContext || null)
-  const conversationMessages = messages.map((msg) => ({
-    role: msg.role as 'user' | 'assistant',
-    content: msg.content,
-  }))
+  const conversationMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+
+  // If the first message is from the user, it's their answer to "What's the idea?"
+  // We need to prepend the opening question so Claude sees the full exchange.
+  if (messages.length > 0 && messages[0].role === 'user') {
+    conversationMessages.push({ role: 'assistant', content: "What's the idea?" })
+  }
+
+  for (const msg of messages) {
+    conversationMessages.push({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    })
+  }
 
   const anthropic = getAnthropicClient()
 
@@ -107,19 +120,15 @@ export async function POST(request: Request) {
           .replace(/\[SIGNALS_READY\]/g, '')
           .trim()
 
-        const newUserMessage: IntakeMessage = {
-          role: 'user',
-          content: message,
-          timestamp: new Date().toISOString(),
-        }
-
         const newAssistantMessage: IntakeMessage = {
           role: 'assistant',
           content: cleanResponse,
           timestamp: new Date().toISOString(),
         }
 
-        const updatedTranscript = [...messages, newUserMessage, newAssistantMessage]
+        // messages from the client already includes the user's latest message,
+        // so we only append the assistant response
+        const updatedTranscript = [...messages, newAssistantMessage]
 
         await supabase
           .from('stories')

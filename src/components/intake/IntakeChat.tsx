@@ -44,49 +44,39 @@ export function IntakeChat({
     documentContext,
   })
 
-  // Convert flat messages into exchange pairs.
-  // Each exchange = one AI question + the user's answer to it.
-  // The user's first message is the answer to the opening "What's the idea?" prompt
-  // shown in the OpeningState. We need to pair it correctly.
+  // ─── Exchange construction ───
+  // The conversation always starts with the OpeningState showing "What's the idea?"
+  // That question is NOT stored in messages. The user's answer to it IS the first
+  // message (always role='user'). After that, messages alternate: assistant, user,
+  // assistant, user...
+  //
+  // Structure:
+  //   messages[0] = user answer to "What's the idea?"
+  //   messages[1] = assistant question 2
+  //   messages[2] = user answer to question 2
+  //   messages[3] = assistant question 3
+  //   ...
+  //
+  // Exchange model:
+  //   Exchange 0: { question: "What's the idea?", answer: messages[0] }
+  //   Exchange N: { question: messages[2N-1],     answer: messages[2N] }
   const exchanges: Exchange[] = []
 
-  // Find the first user message index and first assistant message index
-  const firstUserIdx = messages.findIndex((m) => m.role === 'user')
-  const firstAssistantIdx = messages.findIndex((m) => m.role === 'assistant')
-
-  if (firstUserIdx === 0 && firstAssistantIdx >= 1) {
-    // User message came first (typed into OpeningState).
-    // Pair it with "What's the idea?" as a completed exchange.
+  if (messages.length > 0) {
+    // Exchange 0: the opening question + user's first answer
     exchanges.push({
       question: "What's the idea?",
-      answer: messages[0].content,
+      answer: messages[0]?.role === 'user' ? messages[0].content : null,
     })
-    // Process remaining assistant messages starting from the first one,
-    // but skip if it's just repeating "What's the idea?"
-    for (let i = firstAssistantIdx; i < messages.length; i++) {
-      const msg = messages[i]
-      if (msg.role === 'assistant' && msg.content) {
-        // Skip duplicate "What's the idea?" from AI (already shown as synthetic exchange)
-        const normalized = msg.content.trim().toLowerCase().replace(/[?'"']/g, '')
-        if (i === firstAssistantIdx && normalized.includes('whats the idea')) {
-          continue
-        }
-        const nextMsg = messages[i + 1]
+
+    // Subsequent exchanges: pairs of (assistant, user) starting at index 1
+    for (let i = 1; i < messages.length; i += 2) {
+      const assistantMsg = messages[i]
+      const userMsg = messages[i + 1]
+      if (assistantMsg?.role === 'assistant') {
         exchanges.push({
-          question: msg.content,
-          answer: nextMsg?.role === 'user' ? nextMsg.content : null,
-        })
-      }
-    }
-  } else {
-    // Standard case: messages start with assistant (e.g., loaded from transcript)
-    for (let i = 0; i < messages.length; i++) {
-      const msg = messages[i]
-      if (msg.role === 'assistant' && msg.content) {
-        const nextMsg = messages[i + 1]
-        exchanges.push({
-          question: msg.content,
-          answer: nextMsg?.role === 'user' ? nextMsg.content : null,
+          question: assistantMsg.content || '',
+          answer: userMsg?.role === 'user' ? userMsg.content : null,
         })
       }
     }
