@@ -1,14 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAnthropicClient } from '@/lib/ai/client'
-import { buildStorySystemPrompt } from '@/lib/ai/story-prompt'
 import { createStreamingResponse } from '@/lib/ai/stream'
-import type { IntakeSignals, VisualStyle, Chapter } from '@/types/story'
+import type { Chapter } from '@/types/story'
+import type { CreativeBrief } from '@/types/creative-brief'
+
+const SYSTEM_PROMPT = `[PLACEHOLDER — Writer system prompt coming in separate prompt]`
 
 interface GenerateRequest {
   storyId: string
-  signals: IntakeSignals
-  visualStyle: VisualStyle
-  documentContent?: string | null
+  creativeBrief: CreativeBrief
+  revisionNotes?: string | null
 }
 
 export async function POST(request: Request) {
@@ -22,9 +23,9 @@ export async function POST(request: Request) {
   }
 
   const body: GenerateRequest = await request.json()
-  const { storyId, signals, visualStyle } = body
+  const { storyId, creativeBrief, revisionNotes } = body
 
-  if (!storyId || !signals.topic) {
+  if (!storyId || !creativeBrief) {
     return Response.json(
       { error: 'Missing required fields', code: 'VALIDATION_ERROR' },
       { status: 400 }
@@ -34,25 +35,28 @@ export async function POST(request: Request) {
   // Update story status to generating
   await supabase
     .from('stories')
-    .update({ status: 'generating', visual_style: visualStyle })
+    .update({ status: 'generating' })
     .eq('id', storyId)
     .eq('user_id', user.id)
 
-  const systemPrompt = buildStorySystemPrompt(signals, visualStyle)
   const anthropic = getAnthropicClient()
 
-  return createStreamingResponse(async function* () {
-    yield { type: 'transition', message: 'Finding the story inside your challenge...' }
+  // Build the user message: creative brief + optional revision notes
+  let userMessage = `Creative Brief:\n${JSON.stringify(creativeBrief, null, 2)}`
+  if (revisionNotes) {
+    userMessage += `\n\nRevision Notes (from editorial review):\n${revisionNotes}`
+  }
 
+  return createStreamingResponse(async function* () {
     try {
       const stream = anthropic.messages.stream({
         model: 'claude-sonnet-4-5',
-        max_tokens: 4096,
-        system: systemPrompt,
+        max_tokens: 8192,
+        system: SYSTEM_PROMPT,
         messages: [
           {
             role: 'user',
-            content: 'Generate the story based on the intake signals provided in the system prompt.',
+            content: userMessage,
           },
         ],
       })
@@ -77,7 +81,6 @@ export async function POST(request: Request) {
       let parsed: {
         title: string
         chapters: Array<{ title: string; body: string; imagePrompt: string }>
-        frameworksUsed: string[]
       }
 
       try {
@@ -92,7 +95,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // Validate chapter count and content
+      // Validate chapter count
       if (!parsed.chapters || parsed.chapters.length < 3 || parsed.chapters.length > 5) {
         throw new Error('Story must contain 3-5 chapters')
       }
@@ -101,13 +104,13 @@ export async function POST(request: Request) {
         title: ch.title,
         body: ch.body,
         imagePrompt: ch.imagePrompt,
-        imageUrl: null, // Stubbed in v1
+        imageUrl: null,
       }))
 
       // Emit chapter events for UI
       for (let i = 0; i < storyContent.length; i++) {
         yield { type: 'chapter_start', index: i, title: storyContent[i].title }
-        yield { type: 'chapter_complete', index: i, imagePrompt: storyContent[i].imagePrompt }
+        yield { type: 'chapter_complete', index: i }
       }
 
       // Save to database
@@ -117,19 +120,19 @@ export async function POST(request: Request) {
           title: parsed.title,
           status: 'complete',
           story_content: storyContent,
-          framework_selected: parsed.frameworksUsed || [],
-          intake_signals: signals,
         })
         .eq('id', storyId)
         .eq('user_id', user.id)
 
+      // Emit full chapters for pipeline orchestrator consumption
+      yield { type: 'chapters_payload', chapters: storyContent }
+
       yield {
         type: 'story_complete',
         title: parsed.title,
-        frameworkSelected: parsed.frameworksUsed || [],
+        chapters: storyContent,
       }
     } catch (error) {
-      // Update status to error
       await supabase
         .from('stories')
         .update({ status: 'error' })

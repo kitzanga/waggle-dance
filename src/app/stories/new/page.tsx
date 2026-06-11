@@ -44,7 +44,7 @@ export default function NewStoryPage() {
     createStory()
   }, [router])
 
-  const { phase: genPhase, transitionMessage, generate, error: genError } =
+  const { phase: genPhase, pipelineEvent, generate, error: genError } =
     useStoryGeneration({ storyId: storyId || '' })
 
   function handleIntakeComplete(completedSignals: IntakeSignals) {
@@ -128,7 +128,7 @@ export default function NewStoryPage() {
     return (
       <GenerationTransition
         isActive={genPhase === 'transition' || genPhase === 'streaming' || genPhase === 'idle'}
-        message={transitionMessage}
+        pipelineEvent={pipelineEvent}
       />
     )
   }

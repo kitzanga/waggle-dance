@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { readStream } from '@/lib/ai/stream'
 import type { IntakeSignals, VisualStyle, Chapter } from '@/types/story'
-import type { GenerationStreamEvent } from '@/types/api'
+import type { PipelineEvent } from '@/types/pipeline'
 
 type GenerationPhase = 'idle' | 'transition' | 'streaming' | 'complete' | 'error'
 
@@ -16,7 +16,7 @@ export function useStoryGeneration({ storyId }: UseStoryGenerationOptions) {
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [title, setTitle] = useState<string | null>(null)
   const [streamingContent, setStreamingContent] = useState('')
-  const [transitionMessage, setTransitionMessage] = useState('')
+  const [pipelineEvent, setPipelineEvent] = useState<PipelineEvent | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const generate = useCallback(
@@ -27,42 +27,39 @@ export function useStoryGeneration({ storyId }: UseStoryGenerationOptions) {
       setChapters([])
 
       try {
-        const response = await fetch('/api/stories/generate', {
+        // Call the pipeline endpoint which orchestrates all three stages
+        const response = await fetch('/api/stories/pipeline', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ storyId, signals, visualStyle }),
+          body: JSON.stringify({ storyId, intakeSignals: signals, visualStyle }),
         })
 
         if (!response.ok) {
-          throw new Error('Generation request failed')
+          throw new Error('Pipeline request failed')
         }
 
-        for await (const event of readStream<GenerationStreamEvent>(response)) {
+        for await (const event of readStream<PipelineEvent>(response)) {
+          setPipelineEvent(event)
+
           switch (event.type) {
-            case 'transition':
-              setTransitionMessage(event.message)
-              // Hold transition state for at least 2 seconds
-              await new Promise((resolve) => setTimeout(resolve, 2000))
-              setPhase('streaming')
+            case 'stage_change':
+              if (event.stage === 'writing') {
+                setPhase('streaming')
+              }
               break
 
             case 'token':
-              setStreamingContent((prev) => prev + event.content)
-              break
-
-            case 'chapter_start':
-              // A chapter is starting — could update UI
-              break
-
-            case 'chapter_complete':
+              setStreamingContent((prev) => prev + event.token)
               break
 
             case 'story_complete':
-              setTitle(event.title)
+              break
+
+            case 'pipeline_complete':
               setPhase('complete')
               break
 
-            case 'error':
+            case 'pipeline_error':
               setError(event.message)
               setPhase('error')
               break
@@ -81,7 +78,7 @@ export function useStoryGeneration({ storyId }: UseStoryGenerationOptions) {
     chapters,
     title,
     streamingContent,
-    transitionMessage,
+    pipelineEvent,
     error,
     generate,
   }
