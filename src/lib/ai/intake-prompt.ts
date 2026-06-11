@@ -25,8 +25,8 @@ export function buildIntakeSystemPrompt(
 ## The four questions, in order
 
 1. "What's the idea?"
-2. "What do you want them to do differently after they hear it?"
-3. "Who are these people, in human terms, not titles?"
+2. "Who needs to hear it?"
+3. "What do you want them to do differently after they hear it?"
 4. "What's their biggest reason for tuning this out?"
 
 Ask them in this order. Do not skip. Do not reorder. Do not add questions.
@@ -66,8 +66,8 @@ After each exchange, if you can identify a signal, append a JSON block (hidden f
 function buildSignalStatus(signals: Partial<IntakeSignals>): string {
   const items = [
     { key: 'topic', label: 'Topic (idea)', value: signals.topic },
-    { key: 'desiredShift', label: 'Desired Shift (what changes)', value: signals.desiredShift },
     { key: 'audiencePortrait', label: 'Audience (who)', value: signals.audiencePortrait },
+    { key: 'desiredShift', label: 'Desired Shift (what changes)', value: signals.desiredShift },
     { key: 'resistancePattern', label: 'Resistance (why they tune out)', value: signals.resistancePattern },
     { key: 'tension', label: 'Tension (inferred)', value: signals.tension },
     { key: 'stakes', label: 'Stakes (inferred)', value: signals.stakes },
