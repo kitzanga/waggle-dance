@@ -45,8 +45,22 @@ export function IntakeChat({
   })
 
   // Convert flat messages into exchange pairs
+  // The first user message is the response to "What's the idea?" (the opening state).
+  // We inject it as a synthetic first exchange so it appears in history.
   const exchanges: Exchange[] = []
-  for (let i = 0; i < messages.length; i++) {
+  let startIndex = 0
+
+  // If the first message is from the user (response to the opening question),
+  // pair it with "What's the idea?" as a synthetic exchange
+  if (messages.length > 0 && messages[0].role === 'user') {
+    exchanges.push({
+      question: "What's the idea?",
+      answer: messages[0].content,
+    })
+    startIndex = 1
+  }
+
+  for (let i = startIndex; i < messages.length; i++) {
     const msg = messages[i]
     if (msg.role === 'assistant' && msg.content) {
       const nextMsg = messages[i + 1]

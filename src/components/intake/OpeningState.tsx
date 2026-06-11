@@ -40,7 +40,7 @@ export function OpeningState({ visible }: OpeningStateProps) {
             className="text-center"
             style={{
               fontSize: 'var(--text-sm)',
-              color: 'var(--text-muted)',
+              color: 'var(--text-secondary)',
               marginTop: '10px',
               lineHeight: 1.45,
             }}

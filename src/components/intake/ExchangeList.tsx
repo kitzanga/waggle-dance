@@ -24,7 +24,7 @@ export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [exchanges])
+  }, [exchanges.length])
 
   if (exchanges.length === 0) return null
 
@@ -42,40 +42,43 @@ export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
         width: '100%',
       }}
     >
-      <AnimatePresence initial={false}>
-        {/* Past exchanges */}
-        {past.map((exchange, i) => (
-          <motion.div
-            key={`past-${i}`}
-            animate={{ opacity: 1 }}
-            transition={
-              shouldReduceMotion
-                ? { duration: 0 }
-                : { duration: 0.3, ease: easeDefault }
-            }
-            style={{ paddingBottom: '24px' }}
-          >
-            <PastExchange
-              question={exchange.question}
-              answer={exchange.answer || ''}
-              isReceding={i === past.length - 1}
-            />
-          </motion.div>
-        ))}
+      {/* Past exchanges — opacity recedes, no position animation */}
+      {past.map((exchange, i) => (
+        <motion.div
+          key={`exchange-${i}`}
+          initial={shouldReduceMotion ? false : { opacity: 0.7 }}
+          animate={{ opacity: 1 }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { duration: 0.3, ease: easeDefault }
+          }
+          style={{ paddingBottom: '24px', willChange: 'opacity' }}
+        >
+          <PastExchange
+            question={exchange.question}
+            answer={exchange.answer || ''}
+            isReceding={i === past.length - 1}
+          />
+        </motion.div>
+      ))}
 
-        {/* Hero exchange (newest, at the bottom visually) */}
+      {/* Hero exchange (newest) — fades and slides up */}
+      <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={`hero-${heroIndex}`}
-          initial={
-            !shouldReduceMotion ? { opacity: 0, y: 16 } : false
-          }
+          initial={shouldReduceMotion ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={
             shouldReduceMotion
               ? { duration: 0 }
-              : { duration: 0.35, delay: 0.1, ease: easeDefault }
+              : {
+                  duration: 0.4,
+                  delay: 0.08,
+                  ease: [0.16, 1, 0.3, 1], // ease-out-expo — very smooth deceleration
+                }
           }
-          style={{ paddingBottom: '24px' }}
+          style={{ paddingBottom: '24px', willChange: 'opacity, transform' }}
         >
           <HeroExchange
             question={hero.question}
