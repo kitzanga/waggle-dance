@@ -43,9 +43,6 @@ export async function POST(request: Request) {
     content: msg.content,
   }))
 
-  // Add the new user message
-  conversationMessages.push({ role: 'user', content: message })
-
   const anthropic = getAnthropicClient()
 
   // Use streaming with ReadableStream directly for better control
