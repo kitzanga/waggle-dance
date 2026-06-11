@@ -1,8 +1,10 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { HeroExchange } from './HeroExchange'
 import { PastExchange } from './PastExchange'
+import { useReducedMotion } from '@/lib/motion/intake'
 
 interface Exchange {
   question: string
@@ -14,8 +16,11 @@ interface ExchangeListProps {
   isStreaming: boolean
 }
 
+const easeDefault: [number, number, number, number] = [0.25, 0.1, 0.25, 1]
+
 export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const shouldReduceMotion = useReducedMotion()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -30,50 +35,77 @@ export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
 
   return (
     <div
-      className="flex flex-col-reverse flex-1 overflow-y-auto px-6"
-      style={{ maxWidth: 'var(--content-max)', margin: '0 auto', width: '100%' }}
+      className="intake-content-column flex flex-col justify-end flex-1 overflow-y-auto"
+      style={{
+        maxWidth: 'var(--content-max)',
+        margin: '0 auto',
+        width: '100%',
+      }}
     >
+      <AnimatePresence initial={false}>
+        {/* Past exchanges */}
+        {past.map((exchange, i) => (
+          <motion.div
+            key={`past-${i}`}
+            animate={{ opacity: 1 }}
+            transition={
+              shouldReduceMotion
+                ? { duration: 0 }
+                : { duration: 0.3, ease: easeDefault }
+            }
+            style={{ paddingBottom: '24px' }}
+          >
+            <PastExchange
+              question={exchange.question}
+              answer={exchange.answer || ''}
+              isReceding={i === past.length - 1}
+            />
+          </motion.div>
+        ))}
+
+        {/* Hero exchange (newest, at the bottom visually) */}
+        <motion.div
+          key={`hero-${heroIndex}`}
+          initial={
+            !shouldReduceMotion ? { opacity: 0, y: 16 } : false
+          }
+          animate={{ opacity: 1, y: 0 }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { duration: 0.35, delay: 0.1, ease: easeDefault }
+          }
+          style={{ paddingBottom: '24px' }}
+        >
+          <HeroExchange
+            question={hero.question}
+            isNew={!isStreaming}
+          />
+          {hero.answer && (
+            <>
+              <div
+                style={{
+                  height: '1px',
+                  background: 'var(--border-default)',
+                  margin: '8px 0',
+                }}
+              />
+              <p
+                style={{
+                  fontSize: 'var(--text-base)',
+                  color: 'var(--text-secondary)',
+                  lineHeight: 1.65,
+                }}
+              >
+                {hero.answer}
+              </p>
+            </>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
       {/* Scroll anchor */}
       <div ref={bottomRef} />
-
-      {/* Hero exchange (newest, at the bottom visually) */}
-      <div style={{ paddingBottom: '24px' }}>
-        <HeroExchange
-          question={hero.question}
-          isNew={!isStreaming}
-        />
-        {hero.answer && (
-          <>
-            <div
-              style={{
-                height: '1px',
-                background: 'var(--border-default)',
-                margin: '8px 0',
-              }}
-            />
-            <p
-              style={{
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-secondary)',
-                lineHeight: 1.65,
-              }}
-            >
-              {hero.answer}
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* Past exchanges (rendered in reverse for flex-col-reverse) */}
-      {[...past].reverse().map((exchange, i) => (
-        <div key={i} style={{ paddingBottom: '24px' }}>
-          <PastExchange
-            question={exchange.question}
-            answer={exchange.answer || ''}
-            isCollapsing={i === 0 && past.length === heroIndex}
-          />
-        </div>
-      ))}
     </div>
   )
 }

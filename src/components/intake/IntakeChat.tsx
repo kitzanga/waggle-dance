@@ -156,8 +156,8 @@ export function IntakeChat({
         aria-hidden="true"
       />
 
-      {/* Conversation area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Conversation area — bottom-anchored, content grows upward */}
+      <div className="flex-1 flex flex-col justify-end overflow-hidden">
         {showOpening ? (
           <OpeningState visible={true} />
         ) : (

@@ -6,18 +6,27 @@ import { useReducedMotion } from '@/lib/motion/intake'
 interface PastExchangeProps {
   question: string
   answer: string
-  isCollapsing: boolean
+  isReceding: boolean
 }
 
-export function PastExchange({ question, answer, isCollapsing }: PastExchangeProps) {
+const easeDefault: [number, number, number, number] = [0.25, 0.1, 0.25, 1]
+
+export function PastExchange({ question, answer, isReceding }: PastExchangeProps) {
   const shouldReduceMotion = useReducedMotion()
 
   return (
-    <div>
+    <motion.div
+      animate={{ opacity: 1 }}
+      transition={
+        shouldReduceMotion
+          ? { duration: 0 }
+          : { duration: 0.3, ease: easeDefault }
+      }
+    >
       {/* Creator answer */}
       <p
         style={{
-          fontSize: 'var(--text-sm)',
+          fontSize: 'var(--text-base)',
           color: 'var(--text-secondary)',
           lineHeight: 1.65,
         }}
@@ -34,23 +43,16 @@ export function PastExchange({ question, answer, isCollapsing }: PastExchangePro
         }}
       />
 
-      {/* AI question (receded) */}
-      <motion.p
-        initial={
-          isCollapsing && !shouldReduceMotion
-            ? { fontSize: '20px', color: 'var(--text-primary)' }
-            : false
-        }
-        animate={{ fontSize: '13px', color: 'var(--text-muted)' }}
-        transition={
-          shouldReduceMotion
-            ? { duration: 0 }
-            : { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }
-        }
-        style={{ lineHeight: 1.45 }}
+      {/* AI question (receded) — no font-size animation */}
+      <p
+        style={{
+          fontSize: 'var(--text-base)',
+          color: 'var(--text-muted)',
+          lineHeight: 1.5,
+        }}
       >
         {question}
-      </motion.p>
-    </div>
+      </p>
+    </motion.div>
   )
 }

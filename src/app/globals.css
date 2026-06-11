@@ -163,6 +163,19 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Intake content column responsive padding */
+.intake-content-column {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+@media (min-width: 768px) {
+  .intake-content-column {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
