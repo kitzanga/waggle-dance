@@ -8,6 +8,7 @@ import type { IntakeStreamEvent } from '@/types/api'
 import type { IntakePayload } from '@/types/intake-payload'
 import { mapPayloadToSignals } from '@/lib/intake/payload-mapper'
 import { getCalibrationStep, getToneReadout, getDisplayLabel } from '@/lib/intake/calibration-config'
+import { validateQ1 } from '@/lib/intake/q1-validator'
 
 export type IntakePhase = 'conversing' | 'calibrating' | 'final_question' | 'complete'
 
@@ -94,6 +95,23 @@ export function useIntake({
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
 
+      // Client-side Q1 validation: if idea hasn't been accepted yet,
+      // validate before sending to the API.
+      if (!acceptedAnswers.idea) {
+        const rejection = validateQ1(content)
+        if (rejection) {
+          // Show the rejection as an AI message — don't hit the API
+          const rejectionMessage: IntakeMessage = {
+            role: 'assistant',
+            content: rejection,
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, rejectionMessage])
+          setIsStreaming(false)
+          return
+        }
+      }
+
       try {
         const response = await fetch('/api/intake/chat', {
           method: 'POST',
@@ -144,14 +162,20 @@ export function useIntake({
             return updated
           })
 
-          // Mark accepted answers based on which signals were emitted
+          // Mark accepted answers based on which signals were emitted.
+          // For topic (Q1), double-check that the answer passes client validation
+          // as a safety net against AI non-compliance.
           setAcceptedAnswers((prev) => {
             const updated = { ...prev }
             for (const { signal } of signalUpdates) {
               const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
               if (field && !updated[field]) {
-                // The user's most recent message is the accepted answer
-                updated[field] = content
+                // For Q1 (idea/topic), validate client-side as safety net
+                if (field === 'idea' && validateQ1(content) !== null) {
+                  // Don't accept — validator rejected it
+                } else {
+                  updated[field] = content
+                }
               }
             }
             return updated
