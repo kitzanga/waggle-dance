@@ -44,11 +44,13 @@ export function useIntake({
   const [payload, setPayload] = useState<Partial<IntakePayload>>({})
   const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
 
-  // Count completed conversational questions from messages
-  const conversationalQuestionsAnswered = Math.min(
-    messages.filter((m) => m.role === 'user').length,
-    4
-  )
+  // Count completed conversational questions from captured signals
+  const conversationalQuestionsAnswered = [
+    signals.topic,
+    signals.audiencePortrait,
+    signals.desiredShift,
+    signals.resistancePattern,
+  ].filter(Boolean).length
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -63,23 +65,6 @@ export function useIntake({
 
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
-
-      // Track which conversational question this answers
-      const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length
-
-      // Map conversational answers to payload fields
-      if (userMessagesCount === 1) {
-        setPayload((prev) => ({ ...prev, idea: content }))
-      } else if (userMessagesCount === 2) {
-        setPayload((prev) => ({ ...prev, audience: content }))
-      } else if (userMessagesCount === 3) {
-        setPayload((prev) => ({ ...prev, desiredBehaviorChange: content }))
-      } else if (userMessagesCount === 4) {
-        setPayload((prev) => ({ ...prev, tuningOutReason: content }))
-      }
-
-      // Determine if this is the Q4 answer (transition point)
-      const isQ4Answer = userMessagesCount >= 4 && intakePhase === 'conversing'
 
       try {
         const response = await fetch('/api/intake/chat', {
@@ -99,67 +84,66 @@ export function useIntake({
           throw new Error(errorData?.error || `Request failed: ${response.status}`)
         }
 
-        if (isQ4Answer) {
-          // Q4 answer: consume the stream for signal extraction but do NOT
-          // display the AI's response. Transition directly to calibration.
-          for await (const event of readStream<IntakeStreamEvent>(response)) {
-            if (event.type === 'signal_update') {
-              setSignals((prev) => ({
-                ...prev,
-                [event.signal]: event.value,
-              }))
-            }
-            // All other events (token, ready_to_generate, done) are ignored
-          }
+        let assistantContent = ''
+        let signalsReady = false
 
-          // Transition to calibration immediately
+        // Buffer the stream first to check for signalsReady before displaying
+        const signalUpdates: Array<{ signal: string; value: string }> = []
+
+        for await (const event of readStream<IntakeStreamEvent>(response)) {
+          switch (event.type) {
+            case 'token':
+              assistantContent += event.content
+              break
+            case 'signal_update':
+              signalUpdates.push({ signal: event.signal, value: event.value })
+              break
+            case 'ready_to_generate':
+              signalsReady = true
+              break
+            case 'done':
+              break
+          }
+        }
+
+        // Apply signal updates
+        if (signalUpdates.length > 0) {
+          setSignals((prev) => {
+            const updated = { ...prev }
+            for (const { signal, value } of signalUpdates) {
+              (updated as Record<string, string>)[signal] = value
+            }
+            return updated
+          })
+        }
+
+        if (signalsReady && intakePhase === 'conversing') {
+          // All 4 signals gathered. Transition to calibration.
+          // Do NOT display the AI's response — go directly to Q5.
+          const userMessages = updatedMessages.filter((m) => m.role === 'user')
+          const accepted = userMessages.slice(-4)
+          setPayload((prev) => ({
+            ...prev,
+            idea: accepted[0]?.content || prev.idea || '',
+            audience: accepted[1]?.content || prev.audience || '',
+            desiredBehaviorChange: accepted[2]?.content || prev.desiredBehaviorChange || '',
+            tuningOutReason: accepted[3]?.content || prev.tuningOutReason || '',
+          }))
           setIntakePhase('calibrating')
           setCurrentStep(5)
         } else {
-          // Q1–Q3: stream the AI's next question into the conversation
-          let assistantContent = ''
+          // Normal flow: display the AI's response as the next question
+          const displayContent = assistantContent
+            .replace(/```signals\n[\s\S]*?\n```/g, '')
+            .replace(/\[SIGNALS_READY\]/g, '')
+            .trim()
+
           const assistantMessage: IntakeMessage = {
             role: 'assistant',
-            content: '',
+            content: displayContent,
             timestamp: new Date().toISOString(),
           }
-
           setMessages((prev) => [...prev, assistantMessage])
-
-          for await (const event of readStream<IntakeStreamEvent>(response)) {
-            switch (event.type) {
-              case 'token':
-                assistantContent += event.content
-                // Strip signal markers from display
-                const displayContent = assistantContent
-                  .replace(/```signals\n[\s\S]*?\n```/g, '')
-                  .replace(/\[SIGNALS_READY\]/g, '')
-                  .trim()
-                setMessages((prev) => {
-                  const updated = [...prev]
-                  updated[updated.length - 1] = {
-                    ...updated[updated.length - 1],
-                    content: displayContent,
-                  }
-                  return updated
-                })
-                break
-
-              case 'signal_update':
-                setSignals((prev) => ({
-                  ...prev,
-                  [event.signal]: event.value,
-                }))
-                break
-
-              case 'ready_to_generate':
-                // Ignored — phase transition is step-count driven
-                break
-
-              case 'done':
-                break
-            }
-          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')

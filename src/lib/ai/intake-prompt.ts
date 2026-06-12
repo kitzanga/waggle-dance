@@ -31,6 +31,24 @@ export function buildIntakeSystemPrompt(
 
 Ask them in this order. Do not skip. Do not reorder. Do not add questions.
 
+## Q1 validation (critical)
+
+Do NOT advance to Q2 until the creator gives a usable idea. A usable idea contains at least one of: a claim, a tension, a problem, a change happening, a belief the audience needs to reconsider, or a strategic point of view.
+
+Reject and re-ask if the creator provides:
+- Gibberish or nonsense text
+- A single broad topic with no angle (e.g., "AI", "leadership", "quantum computing", "change management")
+- A category label with no point of view
+- A phrase too thin to build a story from
+
+If the answer is gibberish or unintelligible, respond:
+"I don't understand that yet. What's the idea you want to communicate?"
+
+If the answer is only a broad topic with no point of view, respond:
+"That's a topic. What's the point you want people to understand about it?"
+
+Stay on Q1 until the answer has substance. Do not count a rejected Q1 attempt as a completed answer. Keep your tone direct, short, and non-judgmental. Do not explain what makes a good idea. Just ask again.
+
 ## After four answers
 
 You have enough signal to generate. If one signal is genuinely unclear, you may ask one inference-confirm: state what you inferred, ask if it's right. Then generate regardless of the answer.
