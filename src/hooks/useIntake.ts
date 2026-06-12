@@ -38,16 +38,15 @@ export function useIntake({
   const [readyToGenerate, setReadyToGenerate] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // New calibration state
+  // Calibration state
   const [intakePhase, setIntakePhase] = useState<IntakePhase>('conversing')
   const [currentStep, setCurrentStep] = useState(1) // 1–10
   const [payload, setPayload] = useState<Partial<IntakePayload>>({})
   const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
 
   // Count completed conversational questions from messages
-  // messages[0] = user answer to Q1, messages[1] = AI Q2, messages[2] = user answer to Q2, etc.
   const conversationalQuestionsAnswered = Math.min(
-    Math.floor((messages.filter((m) => m.role === 'user').length)),
+    messages.filter((m) => m.role === 'user').length,
     4
   )
 
@@ -67,8 +66,6 @@ export function useIntake({
 
       // Track which conversational question this answers
       const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length
-      const newStep = Math.min(userMessagesCount, 4)
-      setCurrentStep(newStep + 1) // next step to show
 
       // Map conversational answers to payload fields
       if (userMessagesCount === 1) {
@@ -80,6 +77,9 @@ export function useIntake({
       } else if (userMessagesCount === 4) {
         setPayload((prev) => ({ ...prev, tuningOutReason: content }))
       }
+
+      // Determine if this is the Q4 answer (transition point)
+      const isQ4Answer = userMessagesCount >= 4 && intakePhase === 'conversing'
 
       try {
         const response = await fetch('/api/intake/chat', {
@@ -99,62 +99,67 @@ export function useIntake({
           throw new Error(errorData?.error || `Request failed: ${response.status}`)
         }
 
-        let assistantContent = ''
-        const assistantMessage: IntakeMessage = {
-          role: 'assistant',
-          content: '',
-          timestamp: new Date().toISOString(),
-        }
-
-        setMessages((prev) => [...prev, assistantMessage])
-
-        for await (const event of readStream<IntakeStreamEvent>(response)) {
-          switch (event.type) {
-            case 'token':
-              assistantContent += event.content
-              // Strip signal markers from display
-              const displayContent = assistantContent
-                .replace(/```signals\n[\s\S]*?\n```/g, '')
-                .replace(/\[SIGNALS_READY\]/g, '')
-                .trim()
-              setMessages((prev) => {
-                const updated = [...prev]
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: displayContent,
-                }
-                return updated
-              })
-              break
-
-            case 'signal_update':
+        if (isQ4Answer) {
+          // Q4 answer: consume the stream for signal extraction but do NOT
+          // display the AI's response. Transition directly to calibration.
+          for await (const event of readStream<IntakeStreamEvent>(response)) {
+            if (event.type === 'signal_update') {
               setSignals((prev) => ({
                 ...prev,
                 [event.signal]: event.value,
               }))
-              break
-
-            case 'ready_to_generate':
-              // In the new flow, we don't use this for phase transition.
-              // Phase transition is driven by step count (see below).
-              break
-
-            case 'done':
-              break
+            }
+            // All other events (token, ready_to_generate, done) are ignored
           }
-        }
 
-        // After Q4 response is streamed, transition to calibration
-        if (userMessagesCount >= 4 && intakePhase === 'conversing') {
-          // Inject the transition message client-side
-          const transitionMessage: IntakeMessage = {
-            role: 'assistant',
-            content: 'Now let\u2019s tune the story.',
-            timestamp: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, transitionMessage])
+          // Transition to calibration immediately
           setIntakePhase('calibrating')
           setCurrentStep(5)
+        } else {
+          // Q1–Q3: stream the AI's next question into the conversation
+          let assistantContent = ''
+          const assistantMessage: IntakeMessage = {
+            role: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+          }
+
+          setMessages((prev) => [...prev, assistantMessage])
+
+          for await (const event of readStream<IntakeStreamEvent>(response)) {
+            switch (event.type) {
+              case 'token':
+                assistantContent += event.content
+                // Strip signal markers from display
+                const displayContent = assistantContent
+                  .replace(/```signals\n[\s\S]*?\n```/g, '')
+                  .replace(/\[SIGNALS_READY\]/g, '')
+                  .trim()
+                setMessages((prev) => {
+                  const updated = [...prev]
+                  updated[updated.length - 1] = {
+                    ...updated[updated.length - 1],
+                    content: displayContent,
+                  }
+                  return updated
+                })
+                break
+
+              case 'signal_update':
+                setSignals((prev) => ({
+                  ...prev,
+                  [event.signal]: event.value,
+                }))
+                break
+
+              case 'ready_to_generate':
+                // Ignored — phase transition is step-count driven
+                break
+
+              case 'done':
+                break
+            }
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -256,7 +261,7 @@ export function useIntake({
     sendMessage,
     setReadyToGenerate,
 
-    // New calibration state
+    // Calibration state
     intakePhase,
     currentStep,
     payload,

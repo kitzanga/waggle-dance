@@ -241,6 +241,23 @@ export function IntakeChat({
                 onContinue={handleCalibrationContinue}
               />
             )}
+
+            {/* Q10 prompt — free text return */}
+            {intakePhase === 'final_question' && (
+              <div style={{ paddingBottom: '24px' }}>
+                <p
+                  style={{
+                    fontSize: 'var(--text-lg)',
+                    fontWeight: 400,
+                    lineHeight: 1.45,
+                    letterSpacing: '-0.015em',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  What are they trying to protect or prove?
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

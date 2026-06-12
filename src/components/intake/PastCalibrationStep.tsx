@@ -8,15 +8,15 @@ interface PastCalibrationStepProps {
 export function PastCalibrationStep({ prompt, selectedLabel }: PastCalibrationStepProps) {
   return (
     <div>
-      {/* Creator's selection */}
+      {/* AI question (receded) */}
       <p
         style={{
           fontSize: 'var(--text-base)',
-          color: 'var(--text-secondary)',
-          lineHeight: 1.65,
+          color: 'var(--text-muted)',
+          lineHeight: 1.5,
         }}
       >
-        {selectedLabel}
+        {prompt}
       </p>
 
       {/* Hairline divider */}
@@ -28,15 +28,15 @@ export function PastCalibrationStep({ prompt, selectedLabel }: PastCalibrationSt
         }}
       />
 
-      {/* AI question (receded) */}
+      {/* Creator's selection */}
       <p
         style={{
           fontSize: 'var(--text-base)',
-          color: 'var(--text-muted)',
-          lineHeight: 1.5,
+          color: 'var(--text-secondary)',
+          lineHeight: 1.65,
         }}
       >
-        {prompt}
+        {selectedLabel}
       </p>
     </div>
   )
