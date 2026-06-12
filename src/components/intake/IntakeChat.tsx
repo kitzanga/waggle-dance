@@ -51,6 +51,7 @@ export function IntakeChat({
     intakePhase,
     currentStep,
     calibrationAnswers,
+    acceptedAnswers,
     conversationalQuestionsAnswered,
     submitCalibrationAnswer,
     submitFinalAnswer,
@@ -63,29 +64,64 @@ export function IntakeChat({
     documentContext,
   })
 
-  // ─── Exchange construction (same logic as before) ───
-  const exchanges: Exchange[] = []
+  // ─── Exchange construction ───
+  // Build exchanges from accepted answers only. Rejected attempts remain
+  // visible as part of the "current exchange" context, not as completed history.
+  //
+  // An exchange is "completed" only when the AI emits a signal for it
+  // (tracked in acceptedAnswers). The conversation messages include both
+  // accepted and rejected attempts, but only accepted ones form past exchanges.
 
-  if (messages.length > 0) {
-    exchanges.push({
-      question: "What's the idea?",
-      answer: messages[0]?.role === 'user' ? messages[0].content : null,
-    })
+  // Map of question labels for display
+  const QUESTION_LABELS = [
+    "What's the idea?",
+    "Who needs to hear it?",
+    "What do you want them to do differently after they hear it?",
+    "What's their biggest reason for tuning this out?",
+  ]
 
-    for (let i = 1; i < messages.length; i += 2) {
-      const assistantMsg = messages[i]
-      const userMsg = messages[i + 1]
-      if (assistantMsg?.role === 'assistant') {
-        exchanges.push({
-          question: assistantMsg.content || '',
-          answer: userMsg?.role === 'user' ? userMsg.content : null,
-        })
+  // Build completed exchanges from accepted answers
+  const completedExchanges: Exchange[] = []
+  const acceptedFields: (keyof typeof acceptedAnswers)[] = [
+    'idea', 'audience', 'desiredBehaviorChange', 'tuningOutReason',
+  ]
+
+  for (let i = 0; i < acceptedFields.length; i++) {
+    const answer = acceptedAnswers[acceptedFields[i]]
+    if (answer) {
+      completedExchanges.push({
+        question: QUESTION_LABELS[i],
+        answer,
+      })
+    } else {
+      break // Stop at first unanswered — they're sequential
+    }
+  }
+
+  // Determine the current "hero" question — the one being actively asked.
+  // This is either the AI's most recent message (could be a re-ask) or
+  // the next question in sequence if we just completed a transition.
+  let heroQuestion: string | null = null
+  if (intakePhase === 'conversing') {
+    if (messages.length === 0) {
+      // Opening state handles this
+      heroQuestion = null
+    } else {
+      // Find the last assistant message — that's the current question
+      const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+      if (lastAssistant) {
+        heroQuestion = lastAssistant.content
+      } else {
+        // User has submitted first answer but AI hasn't responded yet
+        // (streaming state) — show nothing for hero, the opening question
+        // "What's the idea?" was the prompt
+        heroQuestion = QUESTION_LABELS[0]
       }
     }
   }
 
   const hasStarted = messages.length > 0
-  const showOpening = !hasStarted
+  const showOpening = !hasStarted && intakePhase === 'conversing'
 
   // Calculate progress
   const calibrationProgress = calibrationAnswers.length + (intakePhase === 'complete' ? 1 : 0) // +1 for Q10
@@ -214,8 +250,31 @@ export function IntakeChat({
               width: '100%',
             }}
           >
-            {/* Conversational exchanges */}
-            <ExchangeList exchanges={exchanges} isStreaming={isStreaming} />
+            {/* Completed conversational exchanges (accepted answers only) */}
+            {completedExchanges.length > 0 && (
+              <ExchangeList
+                exchanges={completedExchanges}
+                isStreaming={false}
+                hideHero={intakePhase !== 'conversing'}
+              />
+            )}
+
+            {/* Active conversational question (hero) — only during conversing */}
+            {intakePhase === 'conversing' && heroQuestion && !isStreaming && (
+              <div style={{ paddingBottom: '24px' }}>
+                <p
+                  style={{
+                    fontSize: 'var(--text-lg)',
+                    fontWeight: 400,
+                    lineHeight: 1.45,
+                    letterSpacing: '-0.015em',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {heroQuestion}
+                </p>
+              </div>
+            )}
 
             {/* Past calibration steps */}
             {calibrationAnswers.map((answer) => (

@@ -26,6 +26,26 @@ export interface CalibrationAnswer {
   prompt: string
 }
 
+/**
+ * Tracks accepted conversational answers explicitly.
+ * Only populated when the AI accepts an answer and advances (emits a signal).
+ */
+export interface AcceptedConversationAnswers {
+  idea: string | null
+  audience: string | null
+  desiredBehaviorChange: string | null
+  tuningOutReason: string | null
+}
+
+// Signal-to-field mapping: when the AI emits a signal for one of these keys,
+// we know the corresponding conversational answer was accepted.
+const SIGNAL_TO_CONVERSATION_FIELD: Record<string, keyof AcceptedConversationAnswers> = {
+  topic: 'idea',
+  audiencePortrait: 'audience',
+  desiredShift: 'desiredBehaviorChange',
+  resistancePattern: 'tuningOutReason',
+}
+
 export function useIntake({
   storyId,
   initialMessages = [],
@@ -44,12 +64,20 @@ export function useIntake({
   const [payload, setPayload] = useState<Partial<IntakePayload>>({})
   const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
 
-  // Count completed conversational questions from captured signals
+  // Explicitly tracked accepted conversational answers
+  const [acceptedAnswers, setAcceptedAnswers] = useState<AcceptedConversationAnswers>({
+    idea: null,
+    audience: null,
+    desiredBehaviorChange: null,
+    tuningOutReason: null,
+  })
+
+  // Count completed conversational questions from accepted answers
   const conversationalQuestionsAnswered = [
-    signals.topic,
-    signals.audiencePortrait,
-    signals.desiredShift,
-    signals.resistancePattern,
+    acceptedAnswers.idea,
+    acceptedAnswers.audience,
+    acceptedAnswers.desiredBehaviorChange,
+    acceptedAnswers.tuningOutReason,
   ].filter(Boolean).length
 
   const sendMessage = useCallback(
@@ -86,8 +114,6 @@ export function useIntake({
 
         let assistantContent = ''
         let signalsReady = false
-
-        // Buffer the stream first to check for signalsReady before displaying
         const signalUpdates: Array<{ signal: string; value: string }> = []
 
         for await (const event of readStream<IntakeStreamEvent>(response)) {
@@ -106,7 +132,9 @@ export function useIntake({
           }
         }
 
-        // Apply signal updates
+        // Apply signal updates and track accepted answers.
+        // When the AI emits a signal, it means it accepted the user's answer
+        // for that question and is advancing.
         if (signalUpdates.length > 0) {
           setSignals((prev) => {
             const updated = { ...prev }
@@ -115,20 +143,43 @@ export function useIntake({
             }
             return updated
           })
+
+          // Mark accepted answers based on which signals were emitted
+          setAcceptedAnswers((prev) => {
+            const updated = { ...prev }
+            for (const { signal } of signalUpdates) {
+              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
+              if (field && !updated[field]) {
+                // The user's most recent message is the accepted answer
+                updated[field] = content
+              }
+            }
+            return updated
+          })
         }
 
         if (signalsReady && intakePhase === 'conversing') {
           // All 4 signals gathered. Transition to calibration.
           // Do NOT display the AI's response — go directly to Q5.
-          const userMessages = updatedMessages.filter((m) => m.role === 'user')
-          const accepted = userMessages.slice(-4)
-          setPayload((prev) => ({
-            ...prev,
-            idea: accepted[0]?.content || prev.idea || '',
-            audience: accepted[1]?.content || prev.audience || '',
-            desiredBehaviorChange: accepted[2]?.content || prev.desiredBehaviorChange || '',
-            tuningOutReason: accepted[3]?.content || prev.tuningOutReason || '',
-          }))
+          // Use accepted answers for payload (not positional slicing).
+          setAcceptedAnswers((prev) => {
+            // Also capture the current answer if a signal was just emitted
+            const final = { ...prev }
+            for (const { signal } of signalUpdates) {
+              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
+              if (field && !final[field]) {
+                final[field] = content
+              }
+            }
+            setPayload((prevPayload) => ({
+              ...prevPayload,
+              idea: final.idea || '',
+              audience: final.audience || '',
+              desiredBehaviorChange: final.desiredBehaviorChange || '',
+              tuningOutReason: final.tuningOutReason || '',
+            }))
+            return final
+          })
           setIntakePhase('calibrating')
           setCurrentStep(5)
         } else {
@@ -160,10 +211,8 @@ export function useIntake({
    */
   const submitCalibrationAnswer = useCallback(
     (step: number, field: string, value: string | number) => {
-      // Update payload
       setPayload((prev) => ({ ...prev, [field]: value }))
 
-      // Determine display label
       let displayLabel: string
       if (field === 'toneTemperature' && typeof value === 'number') {
         displayLabel = getToneReadout(value)
@@ -171,21 +220,17 @@ export function useIntake({
         displayLabel = getDisplayLabel(step, String(value))
       }
 
-      // Get the prompt for this step
       const stepConfig = getCalibrationStep(step)
       const prompt = stepConfig?.prompt ?? ''
 
-      // Record the answer for display in past steps
       setCalibrationAnswers((prev) => [
         ...prev,
         { step, field, value, displayLabel, prompt },
       ])
 
-      // Advance to next step
       if (step < 9) {
         setCurrentStep(step + 1)
       } else {
-        // Q9 done — move to Q10 (free text)
         setIntakePhase('final_question')
         setCurrentStep(10)
       }
@@ -195,7 +240,6 @@ export function useIntake({
 
   /**
    * Handle Q10 answer (free text — protection pattern).
-   * No API call needed. Completes the intake.
    */
   const submitFinalAnswer = useCallback(
     (content: string) => {
@@ -206,9 +250,6 @@ export function useIntake({
     []
   )
 
-  /**
-   * Build the final IntakePayload from accumulated state.
-   */
   const getFinalPayload = useCallback((): IntakePayload | null => {
     if (
       !payload.idea ||
@@ -227,9 +268,6 @@ export function useIntake({
     return payload as IntakePayload
   }, [payload])
 
-  /**
-   * Get IntakeSignals mapped from the payload (for generation handoff).
-   */
   const getFinalSignals = useCallback((): IntakeSignals | null => {
     const finalPayload = getFinalPayload()
     if (!finalPayload) return null
@@ -250,6 +288,7 @@ export function useIntake({
     currentStep,
     payload,
     calibrationAnswers,
+    acceptedAnswers,
     conversationalQuestionsAnswered,
     submitCalibrationAnswer,
     submitFinalAnswer,
