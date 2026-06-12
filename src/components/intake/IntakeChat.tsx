@@ -6,7 +6,14 @@ import { OpeningState } from './OpeningState'
 import { ExchangeList } from './ExchangeList'
 import { ProgressIndicator } from './ProgressIndicator'
 import { InputBar } from './InputBar'
+import { CalibrationStep } from './CalibrationStep'
+import { SingleSelectCard } from './SingleSelectCard'
+import { ToneSlider } from './ToneSlider'
+import { PastCalibrationStep } from './PastCalibrationStep'
+import { getCalibrationStep } from '@/lib/intake/calibration-config'
+import type { SingleSelectStepConfig } from '@/lib/intake/calibration-config'
 import type { IntakeSignals } from '@/types/story'
+import type { IntakePayload } from '@/types/intake-payload'
 
 interface Exchange {
   question: string
@@ -17,7 +24,7 @@ interface IntakeChatProps {
   storyId: string
   initialMessages?: import('@/types/intake').IntakeMessage[]
   initialSignals?: Partial<IntakeSignals>
-  onComplete: (signals: IntakeSignals) => void
+  onComplete: (signals: IntakeSignals, payload: IntakePayload) => void
 }
 
 export function IntakeChat({
@@ -30,13 +37,25 @@ export function IntakeChat({
   const [attachError, setAttachError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Calibration local state
+  const [currentSelection, setCurrentSelection] = useState<string | null>(null)
+  const [sliderValue, setSliderValue] = useState(50)
+  const [sliderInteracted, setSliderInteracted] = useState(false)
+
   const {
     messages,
-    signals,
     isStreaming,
     readyToGenerate,
     error,
     sendMessage,
+    intakePhase,
+    currentStep,
+    calibrationAnswers,
+    conversationalQuestionsAnswered,
+    submitCalibrationAnswer,
+    submitFinalAnswer,
+    getFinalPayload,
+    getFinalSignals,
   } = useIntake({
     storyId,
     initialMessages,
@@ -44,32 +63,15 @@ export function IntakeChat({
     documentContext,
   })
 
-  // ─── Exchange construction ───
-  // The conversation always starts with the OpeningState showing "What's the idea?"
-  // That question is NOT stored in messages. The user's answer to it IS the first
-  // message (always role='user'). After that, messages alternate: assistant, user,
-  // assistant, user...
-  //
-  // Structure:
-  //   messages[0] = user answer to "What's the idea?"
-  //   messages[1] = assistant question 2
-  //   messages[2] = user answer to question 2
-  //   messages[3] = assistant question 3
-  //   ...
-  //
-  // Exchange model:
-  //   Exchange 0: { question: "What's the idea?", answer: messages[0] }
-  //   Exchange N: { question: messages[2N-1],     answer: messages[2N] }
+  // ─── Exchange construction (same logic as before) ───
   const exchanges: Exchange[] = []
 
   if (messages.length > 0) {
-    // Exchange 0: the opening question + user's first answer
     exchanges.push({
       question: "What's the idea?",
       answer: messages[0]?.role === 'user' ? messages[0].content : null,
     })
 
-    // Subsequent exchanges: pairs of (assistant, user) starting at index 1
     for (let i = 1; i < messages.length; i += 2) {
       const assistantMsg = messages[i]
       const userMsg = messages[i + 1]
@@ -85,16 +87,15 @@ export function IntakeChat({
   const hasStarted = messages.length > 0
   const showOpening = !hasStarted
 
-  // Calculate progress from signals
-  const completedSteps = [
-    signals.topic,
-    signals.desiredShift,
-    signals.audiencePortrait,
-    signals.resistancePattern,
-  ].filter(Boolean).length
+  // Calculate progress
+  const calibrationProgress = calibrationAnswers.length + (intakePhase === 'complete' ? 1 : 0) // +1 for Q10
 
   function handleSubmit(text: string) {
-    sendMessage(text)
+    if (intakePhase === 'final_question') {
+      submitFinalAnswer(text)
+    } else {
+      sendMessage(text)
+    }
   }
 
   const handleAttach = useCallback(() => {
@@ -105,7 +106,6 @@ export function IntakeChat({
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file type
     const validTypes = [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -118,7 +118,6 @@ export function IntakeChat({
       return
     }
 
-    // Validate file size (20MB)
     if (file.size > 20 * 1024 * 1024) {
       setAttachError('File must be under 20 MB')
       setTimeout(() => setAttachError(null), 5000)
@@ -126,7 +125,6 @@ export function IntakeChat({
       return
     }
 
-    // Upload the file
     uploadFile(file)
     e.target.value = ''
   }
@@ -154,21 +152,42 @@ export function IntakeChat({
     }
   }
 
-  // When ready to generate, wait so the user can read the final summary
-  // before transitioning to the next phase.
+  // Handle calibration continue
+  function handleCalibrationContinue() {
+    const stepConfig = getCalibrationStep(currentStep)
+    if (!stepConfig) return
+
+    if (stepConfig.type === 'slider') {
+      submitCalibrationAnswer(currentStep, stepConfig.field, sliderValue)
+      // Reset slider state for next potential use
+      setSliderInteracted(false)
+      setSliderValue(50)
+    } else if (currentSelection !== null) {
+      submitCalibrationAnswer(currentStep, stepConfig.field, currentSelection)
+      setCurrentSelection(null)
+    }
+  }
+
+  // Determine if continue is available
+  function canContinue(): boolean {
+    const stepConfig = getCalibrationStep(currentStep)
+    if (!stepConfig) return false
+    if (stepConfig.type === 'slider') return sliderInteracted
+    return currentSelection !== null
+  }
+
+  // When ready to generate, hand off after a brief delay
   useEffect(() => {
     if (!readyToGenerate) return
-    const finalSignals: IntakeSignals = {
-      topic: signals.topic || '',
-      tension: signals.tension || null,
-      audiencePortrait: signals.audiencePortrait || null,
-      resistancePattern: signals.resistancePattern || null,
-      stakes: signals.stakes || null,
-      desiredShift: signals.desiredShift || null,
-    }
-    const timer = setTimeout(() => onComplete(finalSignals), 3000)
+    const finalSignals = getFinalSignals()
+    const finalPayload = getFinalPayload()
+    if (!finalSignals || !finalPayload) return
+    const timer = setTimeout(() => onComplete(finalSignals, finalPayload), 2000)
     return () => clearTimeout(timer)
   }, [readyToGenerate]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Determine input bar visibility
+  const inputBarHidden = intakePhase === 'calibrating' || intakePhase === 'complete'
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 'calc(100vh - 48px)' }}>
@@ -187,7 +206,42 @@ export function IntakeChat({
         {showOpening ? (
           <OpeningState visible={true} />
         ) : (
-          <ExchangeList exchanges={exchanges} isStreaming={isStreaming} />
+          <div
+            className="intake-content-column flex flex-col justify-end flex-1 overflow-y-auto"
+            style={{
+              maxWidth: 'var(--content-max)',
+              margin: '0 auto',
+              width: '100%',
+            }}
+          >
+            {/* Conversational exchanges */}
+            <ExchangeList exchanges={exchanges} isStreaming={isStreaming} />
+
+            {/* Past calibration steps */}
+            {calibrationAnswers.map((answer) => (
+              <div key={`cal-${answer.step}`} style={{ paddingBottom: '24px' }}>
+                <PastCalibrationStep
+                  prompt={answer.prompt}
+                  selectedLabel={answer.displayLabel}
+                />
+              </div>
+            ))}
+
+            {/* Active calibration step */}
+            {intakePhase === 'calibrating' && (
+              <ActiveCalibrationView
+                currentStep={currentStep}
+                currentSelection={currentSelection}
+                onSelect={setCurrentSelection}
+                sliderValue={sliderValue}
+                onSliderChange={setSliderValue}
+                sliderInteracted={sliderInteracted}
+                onSliderInteract={() => setSliderInteracted(true)}
+                canContinue={canContinue()}
+                onContinue={handleCalibrationContinue}
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -205,18 +259,73 @@ export function IntakeChat({
 
       {/* Progress indicator */}
       <ProgressIndicator
-        currentStep={completedSteps}
-        completedSteps={completedSteps}
+        conversationProgress={conversationalQuestionsAnswered}
+        calibrationProgress={calibrationProgress}
         visible={hasStarted}
       />
 
-      {/* Input bar */}
+      {/* Input bar — hidden during calibration */}
       <InputBar
         onSubmit={handleSubmit}
         onAttach={handleAttach}
         isDisabled={isStreaming}
         attachError={attachError}
+        hidden={inputBarHidden}
       />
     </div>
+  )
+}
+
+// ─── Active Calibration View (extracted for clarity) ───
+
+interface ActiveCalibrationViewProps {
+  currentStep: number
+  currentSelection: string | null
+  onSelect: (value: string) => void
+  sliderValue: number
+  onSliderChange: (value: number) => void
+  sliderInteracted: boolean
+  onSliderInteract: () => void
+  canContinue: boolean
+  onContinue: () => void
+}
+
+function ActiveCalibrationView({
+  currentStep,
+  currentSelection,
+  onSelect,
+  sliderValue,
+  onSliderChange,
+  sliderInteracted,
+  onSliderInteract,
+  canContinue,
+  onContinue,
+}: ActiveCalibrationViewProps) {
+  const stepConfig = getCalibrationStep(currentStep)
+  if (!stepConfig) return null
+
+  return (
+    <CalibrationStep
+      prompt={stepConfig.prompt}
+      supportingCopy={stepConfig.supportingCopy}
+      onContinue={onContinue}
+      canContinue={canContinue}
+    >
+      {stepConfig.type === 'single-select' && (
+        <SingleSelectCard
+          options={(stepConfig as SingleSelectStepConfig).options}
+          selectedValue={currentSelection}
+          onSelect={onSelect}
+        />
+      )}
+      {stepConfig.type === 'slider' && (
+        <ToneSlider
+          value={sliderValue}
+          onChange={onSliderChange}
+          hasInteracted={sliderInteracted}
+          onInteract={onSliderInteract}
+        />
+      )}
+    </CalibrationStep>
   )
 }
