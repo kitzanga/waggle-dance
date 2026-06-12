@@ -3,35 +3,25 @@
 import { motion } from 'framer-motion'
 import { useReducedMotion } from '@/lib/motion/intake'
 
-type SegmentState = 'done' | 'active' | 'empty'
-
 interface ProgressIndicatorProps {
-  currentStep: number // 0-3
-  completedSteps: number // 0-4
+  /** Number of conversational questions completed (0–4) */
+  conversationProgress: number
+  /** Number of calibration steps completed (0–6, for Q5–Q10) */
+  calibrationProgress: number
   visible: boolean
 }
 
-function getSegmentState(index: number, completedSteps: number): SegmentState {
-  if (index < completedSteps) return 'done'
-  if (index === completedSteps) return 'active'
-  return 'empty'
-}
-
-function getSegmentColor(state: SegmentState): string {
-  switch (state) {
-    case 'done':
-      return 'var(--progress-done)'
-    case 'active':
-      return 'var(--progress-active)'
-    case 'empty':
-      return 'var(--progress-empty)'
-  }
-}
-
-export function ProgressIndicator({ completedSteps, visible }: ProgressIndicatorProps) {
+export function ProgressIndicator({
+  conversationProgress,
+  calibrationProgress,
+  visible,
+}: ProgressIndicatorProps) {
   const shouldReduceMotion = useReducedMotion()
 
   if (!visible) return null
+
+  const conversationFill = Math.min(conversationProgress / 4, 1) * 100
+  const calibrationFill = Math.min(calibrationProgress / 6, 1) * 100
 
   return (
     <div
@@ -41,31 +31,67 @@ export function ProgressIndicator({ completedSteps, visible }: ProgressIndicator
         maxWidth: 'var(--content-max)',
         margin: '0 auto',
         width: '100%',
-        gap: '4px',
+        gap: '8px',
       }}
       role="progressbar"
-      aria-valuenow={completedSteps}
+      aria-valuenow={conversationProgress + calibrationProgress}
       aria-valuemin={0}
-      aria-valuemax={4}
-      aria-label={`Intake progress: ${completedSteps} of 4 questions answered`}
+      aria-valuemax={10}
+      aria-label={`Intake progress: ${conversationProgress + calibrationProgress} of 10 steps`}
     >
-      {[0, 1, 2, 3].map((index) => {
-        const state = getSegmentState(index, completedSteps)
-        return (
-          <motion.div
-            key={index}
-            className="flex-1"
-            style={{
-              height: '2px',
-              borderRadius: '2px',
-            }}
-            animate={{ backgroundColor: getSegmentColor(state) }}
-            transition={
-              shouldReduceMotion ? { duration: 0 } : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
-            }
-          />
-        )
-      })}
+      {/* Conversation segment */}
+      <div
+        className="flex-1"
+        style={{
+          height: '2px',
+          borderRadius: '2px',
+          background: 'var(--progress-empty)',
+          overflow: 'hidden',
+        }}
+      >
+        <motion.div
+          style={{
+            height: '100%',
+            borderRadius: '2px',
+            background: conversationProgress >= 4
+              ? 'var(--progress-done)'
+              : 'var(--progress-active)',
+          }}
+          animate={{ width: `${conversationFill}%` }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
+          }
+        />
+      </div>
+
+      {/* Calibration segment */}
+      <div
+        className="flex-1"
+        style={{
+          height: '2px',
+          borderRadius: '2px',
+          background: 'var(--progress-empty)',
+          overflow: 'hidden',
+        }}
+      >
+        <motion.div
+          style={{
+            height: '100%',
+            borderRadius: '2px',
+            background: calibrationProgress >= 6
+              ? 'var(--progress-done)'
+              : 'var(--progress-active)',
+          }}
+          animate={{ width: `${calibrationFill}%` }}
+          transition={
+            shouldReduceMotion
+              ? { duration: 0 }
+              : { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }
+          }
+        />
+      </div>
     </div>
   )
 }

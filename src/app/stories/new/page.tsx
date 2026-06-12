@@ -9,6 +9,7 @@ import { StyleSelector } from '@/components/story/StyleSelector'
 import { Button } from '@/components/ui/Button'
 import { useStoryGeneration } from '@/hooks/useStoryGeneration'
 import type { IntakeSignals, VisualStyle } from '@/types/story'
+import type { IntakePayload } from '@/types/intake-payload'
 
 type FlowPhase = 'intake' | 'style' | 'generating' | 'complete'
 
@@ -16,6 +17,7 @@ export default function NewStoryPage() {
   const [storyId, setStoryId] = useState<string | null>(null)
   const [phase, setPhase] = useState<FlowPhase>('intake')
   const [signals, setSignals] = useState<IntakeSignals | null>(null)
+  const [intakePayload, setIntakePayload] = useState<IntakePayload | null>(null)
   const [visualStyle, setVisualStyle] = useState<VisualStyle>('watercolor')
   const router = useRouter()
 
@@ -47,8 +49,9 @@ export default function NewStoryPage() {
   const { phase: genPhase, pipelineEvent, generate, error: genError } =
     useStoryGeneration({ storyId: storyId || '' })
 
-  function handleIntakeComplete(completedSignals: IntakeSignals) {
+  function handleIntakeComplete(completedSignals: IntakeSignals, payload: IntakePayload) {
     setSignals(completedSignals)
+    setIntakePayload(payload)
     setPhase('style')
   }
 
@@ -59,7 +62,10 @@ export default function NewStoryPage() {
     const supabase = createClient()
     await supabase
       .from('stories')
-      .update({ topic: signals.topic })
+      .update({
+        topic: signals.topic,
+        intake_signals: intakePayload ? { ...signals, payload: intakePayload } : signals,
+      })
       .eq('id', storyId)
 
     await generate(signals, visualStyle)

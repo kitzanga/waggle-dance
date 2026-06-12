@@ -1,16 +1,17 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface InputBarProps {
   onSubmit: (text: string) => void
   onAttach: () => void
   isDisabled: boolean
   attachError: string | null
+  hidden?: boolean
 }
 
-export function InputBar({ onSubmit, onAttach, isDisabled, attachError }: InputBarProps) {
+export function InputBar({ onSubmit, onAttach, isDisabled, attachError, hidden = false }: InputBarProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -46,11 +47,18 @@ export function InputBar({ onSubmit, onAttach, isDisabled, attachError }: InputB
   }
 
   return (
-    <div
+    <AnimatePresence>
+      {!hidden && (
+    <motion.div
+      initial={false}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
       style={{
         borderTop: '1px solid var(--border-default)',
         background: 'var(--surface-bar, transparent)',
         padding: '12px 24px 20px',
+        overflow: 'hidden',
       }}
     >
       {/* Attach error */}
@@ -167,6 +175,8 @@ export function InputBar({ onSubmit, onAttach, isDisabled, attachError }: InputB
           </svg>
         </motion.button>
       </div>
-    </div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

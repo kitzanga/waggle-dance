@@ -34,14 +34,7 @@ export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
   const past = exchanges.slice(0, heroIndex)
 
   return (
-    <div
-      className="intake-content-column flex flex-col justify-end flex-1 overflow-y-auto"
-      style={{
-        maxWidth: 'var(--content-max)',
-        margin: '0 auto',
-        width: '100%',
-      }}
-    >
+    <>
       {/* Past exchanges — opacity recedes, no position animation */}
       {past.map((exchange, i) => (
         <motion.div
@@ -109,6 +102,6 @@ export function ExchangeList({ exchanges, isStreaming }: ExchangeListProps) {
 
       {/* Scroll anchor */}
       <div ref={bottomRef} />
-    </div>
+    </>
   )
 }
