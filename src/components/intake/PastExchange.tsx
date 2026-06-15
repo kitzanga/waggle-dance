@@ -23,6 +23,18 @@ export function PastExchange({ question, answer, isReceding }: PastExchangeProps
           : { duration: 0.3, ease: easeDefault }
       }
     >
+      {/* AI question label */}
+      <p
+        style={{
+          fontSize: 'var(--text-base)',
+          color: 'var(--text-muted)',
+          lineHeight: 1.5,
+          marginBottom: '6px',
+        }}
+      >
+        {question}
+      </p>
+
       {/* Creator answer */}
       <p
         style={{
@@ -34,25 +46,14 @@ export function PastExchange({ question, answer, isReceding }: PastExchangeProps
         {answer}
       </p>
 
-      {/* Hairline divider */}
+      {/* Hairline divider between exchanges */}
       <div
         style={{
           height: '1px',
           background: 'var(--border-default)',
-          margin: '8px 0',
+          marginTop: '16px',
         }}
       />
-
-      {/* AI question (receded) — no font-size animation */}
-      <p
-        style={{
-          fontSize: 'var(--text-base)',
-          color: 'var(--text-muted)',
-          lineHeight: 1.5,
-        }}
-      >
-        {question}
-      </p>
     </motion.div>
   )
 }

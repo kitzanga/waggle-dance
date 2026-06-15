@@ -8,6 +8,7 @@ import type { IntakeStreamEvent } from '@/types/api'
 import type { IntakePayload } from '@/types/intake-payload'
 import { mapPayloadToSignals } from '@/lib/intake/payload-mapper'
 import { getCalibrationStep, getToneReadout, getDisplayLabel } from '@/lib/intake/calibration-config'
+import { validateQ1 } from '@/lib/intake/q1-validator'
 
 export type IntakePhase = 'conversing' | 'calibrating' | 'final_question' | 'complete'
 
@@ -26,6 +27,26 @@ export interface CalibrationAnswer {
   prompt: string
 }
 
+/**
+ * Tracks accepted conversational answers explicitly.
+ * Only populated when the AI accepts an answer and advances (emits a signal).
+ */
+export interface AcceptedConversationAnswers {
+  idea: string | null
+  audience: string | null
+  desiredBehaviorChange: string | null
+  tuningOutReason: string | null
+}
+
+// Signal-to-field mapping: when the AI emits a signal for one of these keys,
+// we know the corresponding conversational answer was accepted.
+const SIGNAL_TO_CONVERSATION_FIELD: Record<string, keyof AcceptedConversationAnswers> = {
+  topic: 'idea',
+  audiencePortrait: 'audience',
+  desiredShift: 'desiredBehaviorChange',
+  resistancePattern: 'tuningOutReason',
+}
+
 export function useIntake({
   storyId,
   initialMessages = [],
@@ -38,18 +59,27 @@ export function useIntake({
   const [readyToGenerate, setReadyToGenerate] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // New calibration state
+  // Calibration state
   const [intakePhase, setIntakePhase] = useState<IntakePhase>('conversing')
   const [currentStep, setCurrentStep] = useState(1) // 1–10
   const [payload, setPayload] = useState<Partial<IntakePayload>>({})
   const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
 
-  // Count completed conversational questions from messages
-  // messages[0] = user answer to Q1, messages[1] = AI Q2, messages[2] = user answer to Q2, etc.
-  const conversationalQuestionsAnswered = Math.min(
-    Math.floor((messages.filter((m) => m.role === 'user').length)),
-    4
-  )
+  // Explicitly tracked accepted conversational answers
+  const [acceptedAnswers, setAcceptedAnswers] = useState<AcceptedConversationAnswers>({
+    idea: null,
+    audience: null,
+    desiredBehaviorChange: null,
+    tuningOutReason: null,
+  })
+
+  // Count completed conversational questions from accepted answers
+  const conversationalQuestionsAnswered = [
+    acceptedAnswers.idea,
+    acceptedAnswers.audience,
+    acceptedAnswers.desiredBehaviorChange,
+    acceptedAnswers.tuningOutReason,
+  ].filter(Boolean).length
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -65,20 +95,21 @@ export function useIntake({
       const updatedMessages = [...messages, userMessage]
       setMessages(updatedMessages)
 
-      // Track which conversational question this answers
-      const userMessagesCount = updatedMessages.filter((m) => m.role === 'user').length
-      const newStep = Math.min(userMessagesCount, 4)
-      setCurrentStep(newStep + 1) // next step to show
-
-      // Map conversational answers to payload fields
-      if (userMessagesCount === 1) {
-        setPayload((prev) => ({ ...prev, idea: content }))
-      } else if (userMessagesCount === 2) {
-        setPayload((prev) => ({ ...prev, audience: content }))
-      } else if (userMessagesCount === 3) {
-        setPayload((prev) => ({ ...prev, desiredBehaviorChange: content }))
-      } else if (userMessagesCount === 4) {
-        setPayload((prev) => ({ ...prev, tuningOutReason: content }))
+      // Client-side Q1 validation: if idea hasn't been accepted yet,
+      // validate before sending to the API.
+      if (!acceptedAnswers.idea) {
+        const rejection = validateQ1(content)
+        if (rejection) {
+          // Show the rejection as an AI message — don't hit the API
+          const rejectionMessage: IntakeMessage = {
+            role: 'assistant',
+            content: rejection,
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, rejectionMessage])
+          setIsStreaming(false)
+          return
+        }
       }
 
       try {
@@ -100,61 +131,94 @@ export function useIntake({
         }
 
         let assistantContent = ''
-        const assistantMessage: IntakeMessage = {
-          role: 'assistant',
-          content: '',
-          timestamp: new Date().toISOString(),
-        }
-
-        setMessages((prev) => [...prev, assistantMessage])
+        let signalsReady = false
+        const signalUpdates: Array<{ signal: string; value: string }> = []
 
         for await (const event of readStream<IntakeStreamEvent>(response)) {
           switch (event.type) {
             case 'token':
               assistantContent += event.content
-              // Strip signal markers from display
-              const displayContent = assistantContent
-                .replace(/```signals\n[\s\S]*?\n```/g, '')
-                .replace(/\[SIGNALS_READY\]/g, '')
-                .trim()
-              setMessages((prev) => {
-                const updated = [...prev]
-                updated[updated.length - 1] = {
-                  ...updated[updated.length - 1],
-                  content: displayContent,
-                }
-                return updated
-              })
               break
-
             case 'signal_update':
-              setSignals((prev) => ({
-                ...prev,
-                [event.signal]: event.value,
-              }))
+              signalUpdates.push({ signal: event.signal, value: event.value })
               break
-
             case 'ready_to_generate':
-              // In the new flow, we don't use this for phase transition.
-              // Phase transition is driven by step count (see below).
+              signalsReady = true
               break
-
             case 'done':
               break
           }
         }
 
-        // After Q4 response is streamed, transition to calibration
-        if (userMessagesCount >= 4 && intakePhase === 'conversing') {
-          // Inject the transition message client-side
-          const transitionMessage: IntakeMessage = {
-            role: 'assistant',
-            content: 'Now let\u2019s tune the story.',
-            timestamp: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, transitionMessage])
+        // Apply signal updates and track accepted answers.
+        // When the AI emits a signal, it means it accepted the user's answer
+        // for that question and is advancing.
+        if (signalUpdates.length > 0) {
+          setSignals((prev) => {
+            const updated = { ...prev }
+            for (const { signal, value } of signalUpdates) {
+              (updated as Record<string, string>)[signal] = value
+            }
+            return updated
+          })
+
+          // Mark accepted answers based on which signals were emitted.
+          // For topic (Q1), double-check that the answer passes client validation
+          // as a safety net against AI non-compliance.
+          setAcceptedAnswers((prev) => {
+            const updated = { ...prev }
+            for (const { signal } of signalUpdates) {
+              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
+              if (field && !updated[field]) {
+                // For Q1 (idea/topic), validate client-side as safety net
+                if (field === 'idea' && validateQ1(content) !== null) {
+                  // Don't accept — validator rejected it
+                } else {
+                  updated[field] = content
+                }
+              }
+            }
+            return updated
+          })
+        }
+
+        if (signalsReady && intakePhase === 'conversing') {
+          // All 4 signals gathered. Transition to calibration.
+          // Do NOT display the AI's response — go directly to Q5.
+          // Use accepted answers for payload (not positional slicing).
+          setAcceptedAnswers((prev) => {
+            // Also capture the current answer if a signal was just emitted
+            const final = { ...prev }
+            for (const { signal } of signalUpdates) {
+              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
+              if (field && !final[field]) {
+                final[field] = content
+              }
+            }
+            setPayload((prevPayload) => ({
+              ...prevPayload,
+              idea: final.idea || '',
+              audience: final.audience || '',
+              desiredBehaviorChange: final.desiredBehaviorChange || '',
+              tuningOutReason: final.tuningOutReason || '',
+            }))
+            return final
+          })
           setIntakePhase('calibrating')
           setCurrentStep(5)
+        } else {
+          // Normal flow: display the AI's response as the next question
+          const displayContent = assistantContent
+            .replace(/```signals\n[\s\S]*?\n```/g, '')
+            .replace(/\[SIGNALS_READY\]/g, '')
+            .trim()
+
+          const assistantMessage: IntakeMessage = {
+            role: 'assistant',
+            content: displayContent,
+            timestamp: new Date().toISOString(),
+          }
+          setMessages((prev) => [...prev, assistantMessage])
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -171,10 +235,8 @@ export function useIntake({
    */
   const submitCalibrationAnswer = useCallback(
     (step: number, field: string, value: string | number) => {
-      // Update payload
       setPayload((prev) => ({ ...prev, [field]: value }))
 
-      // Determine display label
       let displayLabel: string
       if (field === 'toneTemperature' && typeof value === 'number') {
         displayLabel = getToneReadout(value)
@@ -182,21 +244,17 @@ export function useIntake({
         displayLabel = getDisplayLabel(step, String(value))
       }
 
-      // Get the prompt for this step
       const stepConfig = getCalibrationStep(step)
       const prompt = stepConfig?.prompt ?? ''
 
-      // Record the answer for display in past steps
       setCalibrationAnswers((prev) => [
         ...prev,
         { step, field, value, displayLabel, prompt },
       ])
 
-      // Advance to next step
       if (step < 9) {
         setCurrentStep(step + 1)
       } else {
-        // Q9 done — move to Q10 (free text)
         setIntakePhase('final_question')
         setCurrentStep(10)
       }
@@ -206,7 +264,6 @@ export function useIntake({
 
   /**
    * Handle Q10 answer (free text — protection pattern).
-   * No API call needed. Completes the intake.
    */
   const submitFinalAnswer = useCallback(
     (content: string) => {
@@ -217,9 +274,6 @@ export function useIntake({
     []
   )
 
-  /**
-   * Build the final IntakePayload from accumulated state.
-   */
   const getFinalPayload = useCallback((): IntakePayload | null => {
     if (
       !payload.idea ||
@@ -238,9 +292,6 @@ export function useIntake({
     return payload as IntakePayload
   }, [payload])
 
-  /**
-   * Get IntakeSignals mapped from the payload (for generation handoff).
-   */
   const getFinalSignals = useCallback((): IntakeSignals | null => {
     const finalPayload = getFinalPayload()
     if (!finalPayload) return null
@@ -256,11 +307,12 @@ export function useIntake({
     sendMessage,
     setReadyToGenerate,
 
-    // New calibration state
+    // Calibration state
     intakePhase,
     currentStep,
     payload,
     calibrationAnswers,
+    acceptedAnswers,
     conversationalQuestionsAnswered,
     submitCalibrationAnswer,
     submitFinalAnswer,
