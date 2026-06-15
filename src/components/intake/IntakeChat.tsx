@@ -101,8 +101,10 @@ export function IntakeChat({
   // Determine the current "hero" question — the one being actively asked.
   // This is either the AI's most recent message (could be a re-ask) or
   // the next question in sequence if we just completed a transition.
+  // Hide the hero once all 4 conversational questions are answered to avoid
+  // showing a stale synthesizing question alongside the calibration step.
   let heroQuestion: string | null = null
-  if (intakePhase === 'conversing') {
+  if (intakePhase === 'conversing' && completedExchanges.length < 4) {
     if (messages.length === 0) {
       // Opening state handles this
       heroQuestion = null
