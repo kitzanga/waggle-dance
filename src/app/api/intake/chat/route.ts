@@ -1,15 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { getAnthropicClient } from '@/lib/ai/client'
-import { buildIntakeSystemPrompt } from '@/lib/ai/intake-prompt'
-import type { IntakeSignals } from '@/types/story'
-import type { IntakeMessage } from '@/types/intake'
 
-interface IntakeChatRequest {
+interface IntakeValidateRequest {
   storyId: string
-  message: string
-  signals: Partial<IntakeSignals>
-  messages: IntakeMessage[]
-  documentContext?: string | null
+  step: number
+  answer: string
+  validationPrompt: string
+  /** Full transcript for persistence */
+  transcript: Array<{ question: string; answer: string }>
 }
 
 export async function POST(request: Request) {
@@ -26,39 +24,17 @@ export async function POST(request: Request) {
     )
   }
 
-  const body: IntakeChatRequest = await request.json()
-  const { storyId, message, signals, messages, documentContext } = body
+  const body: IntakeValidateRequest = await request.json()
+  const { storyId, step, answer, validationPrompt, transcript } = body
 
-  if (!storyId || !message) {
+  if (!storyId || step === undefined || !answer || !validationPrompt) {
     return Response.json(
       { error: 'Missing required fields', code: 'VALIDATION_ERROR' },
       { status: 400 }
     )
   }
 
-  // Build conversation history for Claude.
-  // The opening "What's the idea?" is shown in the UI but NOT stored in messages.
-  // We prepend it as a synthetic assistant message so Claude knows to proceed
-  // to question 2 (it follows a strict 4-question sequence).
-  const systemPrompt = buildIntakeSystemPrompt(signals, documentContext || null)
-  const conversationMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
-
-  // If the first message is from the user, it's their answer to "What's the idea?"
-  // We need to prepend the opening question so Claude sees the full exchange.
-  if (messages.length > 0 && messages[0].role === 'user') {
-    conversationMessages.push({ role: 'assistant', content: "What's the idea?" })
-  }
-
-  for (const msg of messages) {
-    conversationMessages.push({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    })
-  }
-
   const anthropic = getAnthropicClient()
-
-  // Use streaming with ReadableStream directly for better control
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -66,9 +42,18 @@ export async function POST(request: Request) {
       try {
         const response = await anthropic.messages.create({
           model: 'claude-sonnet-4-5',
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: conversationMessages,
+          max_tokens: 256,
+          system: `You are the intake validator for Waggle Dance. Your job is to assess whether a user's answer is specific enough to use.
+
+Rules:
+- If the answer is good enough, respond with exactly: [ACCEPTED]
+- If not, respond with a single short follow-up question (max 15 words)
+- Never open with affirmations ("Got it", "Great", etc.)
+- No markdown, no em dashes
+- Be direct and concise — like a sharp colleague`,
+          messages: [
+            { role: 'user', content: validationPrompt },
+          ],
           stream: true,
         })
 
@@ -86,58 +71,19 @@ export async function POST(request: Request) {
           }
         }
 
-        // Parse signals from the response
-        const signalMatch = fullResponse.match(/```signals\n([\s\S]*?)\n```/)
-        if (signalMatch) {
-          try {
-            const parsed = JSON.parse(signalMatch[1])
-            if (parsed.signal && parsed.value) {
-              const data = `data: ${JSON.stringify({ type: 'signal_update', signal: parsed.signal, value: parsed.value })}\n\n`
-              controller.enqueue(encoder.encode(data))
-            }
-          } catch {
-            // Ignore malformed signal extraction
-          }
+        // Determine if accepted
+        const accepted = fullResponse.includes('[ACCEPTED]')
+        const acceptedData = `data: ${JSON.stringify({ type: 'validation_result', accepted, step })}\n\n`
+        controller.enqueue(encoder.encode(acceptedData))
+
+        // Persist transcript to DB on each accepted answer
+        if (accepted) {
+          await supabase
+            .from('stories')
+            .update({ intake_transcript: transcript })
+            .eq('id', storyId)
+            .eq('user_id', user.id)
         }
-
-        // Check if ready to generate
-        if (fullResponse.includes('[SIGNALS_READY]')) {
-          const updatedSignals: IntakeSignals = {
-            topic: signals.topic || '',
-            tension: signals.tension || null,
-            audiencePortrait: signals.audiencePortrait || null,
-            resistancePattern: signals.resistancePattern || null,
-            stakes: signals.stakes || null,
-            desiredShift: signals.desiredShift || null,
-          }
-          const data = `data: ${JSON.stringify({ type: 'ready_to_generate', signals: updatedSignals })}\n\n`
-          controller.enqueue(encoder.encode(data))
-        }
-
-        // Persist the exchange to the database
-        const cleanResponse = fullResponse
-          .replace(/```signals\n[\s\S]*?\n```/g, '')
-          .replace(/\[SIGNALS_READY\]/g, '')
-          .trim()
-
-        const newAssistantMessage: IntakeMessage = {
-          role: 'assistant',
-          content: cleanResponse,
-          timestamp: new Date().toISOString(),
-        }
-
-        // messages from the client already includes the user's latest message,
-        // so we only append the assistant response
-        const updatedTranscript = [...messages, newAssistantMessage]
-
-        await supabase
-          .from('stories')
-          .update({
-            intake_transcript: updatedTranscript,
-            intake_signals: signals,
-          })
-          .eq('id', storyId)
-          .eq('user_id', user.id)
 
         const doneData = `data: ${JSON.stringify({ type: 'done' })}\n\n`
         controller.enqueue(encoder.encode(doneData))

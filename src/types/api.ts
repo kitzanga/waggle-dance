@@ -15,8 +15,7 @@ export interface ApiError {
 /** SSE event types for intake streaming */
 export type IntakeStreamEvent =
   | { type: 'token'; content: string }
-  | { type: 'signal_update'; signal: string; value: string }
-  | { type: 'ready_to_generate'; signals: import('./story').IntakeSignals }
+  | { type: 'validation_result'; accepted: boolean; step: number }
   | { type: 'error'; message: string }
   | { type: 'done' }
 

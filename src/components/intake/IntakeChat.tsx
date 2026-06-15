@@ -11,6 +11,7 @@ import { SingleSelectCard } from './SingleSelectCard'
 import { ToneSlider } from './ToneSlider'
 import { PastCalibrationStep } from './PastCalibrationStep'
 import { getCalibrationStep } from '@/lib/intake/calibration-config'
+import { INTAKE_QUESTIONS } from '@/lib/intake/questions-config'
 import type { SingleSelectStepConfig } from '@/lib/intake/calibration-config'
 import type { IntakeSignals } from '@/types/story'
 import type { IntakePayload } from '@/types/intake-payload'
@@ -22,17 +23,10 @@ interface Exchange {
 
 interface IntakeChatProps {
   storyId: string
-  initialMessages?: import('@/types/intake').IntakeMessage[]
-  initialSignals?: Partial<IntakeSignals>
   onComplete: (signals: IntakeSignals, payload: IntakePayload) => void
 }
 
-export function IntakeChat({
-  storyId,
-  initialMessages,
-  initialSignals,
-  onComplete,
-}: IntakeChatProps) {
+export function IntakeChat({ storyId, onComplete }: IntakeChatProps) {
   const [documentContext, setDocumentContext] = useState<string | null>(null)
   const [attachError, setAttachError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -43,88 +37,58 @@ export function IntakeChat({
   const [sliderInteracted, setSliderInteracted] = useState(false)
 
   const {
-    messages,
     isStreaming,
     readyToGenerate,
     error,
     sendMessage,
+    conversationStep,
+    acceptedAnswers,
+    followUpQuestion,
+    conversationalQuestionsAnswered,
     intakePhase,
     currentStep,
     calibrationAnswers,
-    acceptedAnswers,
-    conversationalQuestionsAnswered,
     submitCalibrationAnswer,
     submitFinalAnswer,
     getFinalPayload,
     getFinalSignals,
-  } = useIntake({
-    storyId,
-    initialMessages,
-    initialSignals,
-    documentContext,
-  })
+  } = useIntake({ storyId, documentContext })
 
-  // ─── Exchange construction ───
-  // Build exchanges from accepted answers only. Rejected attempts remain
-  // visible as part of the "current exchange" context, not as completed history.
-  //
-  // An exchange is "completed" only when the AI emits a signal for it
-  // (tracked in acceptedAnswers). The conversation messages include both
-  // accepted and rejected attempts, but only accepted ones form past exchanges.
-
-  // Map of question labels for display
-  const QUESTION_LABELS = [
-    "What's the idea?",
-    "Who needs to hear it?",
-    "What do you want them to do differently after they hear it?",
-    "What's their biggest reason for tuning this out?",
-  ]
-
-  // Build completed exchanges from accepted answers
+  // ─── Build completed exchanges from accepted answers ───
   const completedExchanges: Exchange[] = []
-  const acceptedFields: (keyof typeof acceptedAnswers)[] = [
+  const fields: ('idea' | 'audience' | 'desiredBehaviorChange' | 'tuningOutReason')[] = [
     'idea', 'audience', 'desiredBehaviorChange', 'tuningOutReason',
   ]
 
-  for (let i = 0; i < acceptedFields.length; i++) {
-    const answer = acceptedAnswers[acceptedFields[i]]
+  for (let i = 0; i < fields.length; i++) {
+    const answer = acceptedAnswers[fields[i]]
     if (answer) {
       completedExchanges.push({
-        question: QUESTION_LABELS[i],
+        question: INTAKE_QUESTIONS[i].headline,
         answer,
       })
     }
   }
 
-  // Determine the current "hero" question — the one being actively asked.
-  // This is either the AI's most recent message (could be a re-ask) or
-  // the next question in sequence if we just completed a transition.
-  // Hide the hero once all 4 conversational questions are answered to avoid
-  // showing a stale synthesizing question alongside the calibration step.
+  // ─── Current hero question ───
+  // Either the deterministic question headline or the AI's follow-up probe
   let heroQuestion: string | null = null
-  if (intakePhase === 'conversing' && completedExchanges.length < 4) {
-    if (messages.length === 0) {
-      // Opening state handles this
-      heroQuestion = null
-    } else {
-      // Find the last assistant message — that's the current question
-      const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-      if (lastAssistant) {
-        heroQuestion = lastAssistant.content
-      } else {
-        // User has submitted first answer but AI hasn't responded yet
-        // (streaming state) — show nothing for hero, the opening question
-        // "What's the idea?" was the prompt
-        heroQuestion = QUESTION_LABELS[0]
-      }
+  if (intakePhase === 'conversing') {
+    const currentQuestion = INTAKE_QUESTIONS[conversationStep]
+    if (followUpQuestion) {
+      // AI rejected the answer — show its follow-up as the active question
+      heroQuestion = followUpQuestion
+    } else if (currentQuestion) {
+      heroQuestion = currentQuestion.headline
     }
   }
 
-  const hasStarted = messages.length > 0
-  const showOpening = !hasStarted && intakePhase === 'conversing'
+  // Show opening state only before user has started
+  const hasStarted = conversationalQuestionsAnswered > 0 || followUpQuestion !== null
+  const showOpening = !hasStarted && intakePhase === 'conversing' && !isStreaming
 
-  // Calculate progress
-  const calibrationProgress = calibrationAnswers.length + (intakePhase === 'complete' ? 1 : 0) // +1 for Q10
+  // Progress
+  const calibrationProgress = calibrationAnswers.length + (intakePhase === 'complete' ? 1 : 0)
 
   function handleSubmit(text: string) {
     if (intakePhase === 'final_question') {
@@ -195,7 +159,6 @@ export function IntakeChat({
 
     if (stepConfig.type === 'slider') {
       submitCalibrationAnswer(currentStep, stepConfig.field, sliderValue)
-      // Reset slider state for next potential use
       setSliderInteracted(false)
       setSliderValue(50)
     } else if (currentSelection !== null) {
@@ -204,7 +167,6 @@ export function IntakeChat({
     }
   }
 
-  // Determine if continue is available
   function canContinue(): boolean {
     const stepConfig = getCalibrationStep(currentStep)
     if (!stepConfig) return false
@@ -212,7 +174,7 @@ export function IntakeChat({
     return currentSelection !== null
   }
 
-  // When ready to generate, hand off after a brief delay
+  // When ready to generate, hand off
   useEffect(() => {
     if (!readyToGenerate) return
     const finalSignals = getFinalSignals()
@@ -222,7 +184,6 @@ export function IntakeChat({
     return () => clearTimeout(timer)
   }, [readyToGenerate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Determine input bar visibility
   const inputBarHidden = intakePhase === 'calibrating' || intakePhase === 'complete'
 
   return (
@@ -237,7 +198,7 @@ export function IntakeChat({
         aria-hidden="true"
       />
 
-      {/* Conversation area — bottom-anchored, content grows upward */}
+      {/* Conversation area */}
       <div className="flex-1 flex flex-col justify-end overflow-hidden">
         {showOpening ? (
           <OpeningState visible={true} />
@@ -250,7 +211,7 @@ export function IntakeChat({
               width: '100%',
             }}
           >
-            {/* Completed conversational exchanges (accepted answers only) */}
+            {/* Completed conversational exchanges */}
             {completedExchanges.length > 0 && (
               <ExchangeList
                 exchanges={completedExchanges}
@@ -259,7 +220,7 @@ export function IntakeChat({
               />
             )}
 
-            {/* Active conversational question (hero) — only during conversing */}
+            {/* Active question (hero) — deterministic headline or AI follow-up */}
             {intakePhase === 'conversing' && heroQuestion && !isStreaming && (
               <div style={{ paddingBottom: '24px' }}>
                 <p
@@ -273,6 +234,19 @@ export function IntakeChat({
                 >
                   {heroQuestion}
                 </p>
+                {/* Show supporting copy only for the initial question, not follow-ups */}
+                {!followUpQuestion && INTAKE_QUESTIONS[conversationStep]?.supporting && (
+                  <p
+                    style={{
+                      fontSize: 'var(--text-sm)',
+                      color: 'var(--text-secondary)',
+                      marginTop: '6px',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {INTAKE_QUESTIONS[conversationStep].supporting}
+                  </p>
+                )}
               </div>
             )}
 
@@ -301,7 +275,7 @@ export function IntakeChat({
               />
             )}
 
-            {/* Q10 prompt — free text return */}
+            {/* Q10 prompt */}
             {intakePhase === 'final_question' && (
               <div style={{ paddingBottom: '24px' }}>
                 <p
@@ -340,7 +314,7 @@ export function IntakeChat({
         visible={hasStarted}
       />
 
-      {/* Input bar — hidden during calibration */}
+      {/* Input bar */}
       <InputBar
         onSubmit={handleSubmit}
         onAttach={handleAttach}
@@ -352,7 +326,7 @@ export function IntakeChat({
   )
 }
 
-// ─── Active Calibration View (extracted for clarity) ───
+// ─── Active Calibration View ───
 
 interface ActiveCalibrationViewProps {
   currentStep: number

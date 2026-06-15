@@ -3,19 +3,16 @@
 import { useState, useCallback } from 'react'
 import { readStream } from '@/lib/ai/stream'
 import type { IntakeSignals } from '@/types/story'
-import type { IntakeMessage } from '@/types/intake'
-import type { IntakeStreamEvent } from '@/types/api'
 import type { IntakePayload } from '@/types/intake-payload'
 import { mapPayloadToSignals } from '@/lib/intake/payload-mapper'
 import { getCalibrationStep, getToneReadout, getDisplayLabel } from '@/lib/intake/calibration-config'
+import { INTAKE_QUESTIONS, buildValidationPrompt } from '@/lib/intake/questions-config'
 import { validateQ1 } from '@/lib/intake/q1-validator'
 
 export type IntakePhase = 'conversing' | 'calibrating' | 'final_question' | 'complete'
 
 interface UseIntakeOptions {
   storyId: string
-  initialMessages?: IntakeMessage[]
-  initialSignals?: Partial<IntakeSignals>
   documentContext?: string | null
 }
 
@@ -27,10 +24,6 @@ export interface CalibrationAnswer {
   prompt: string
 }
 
-/**
- * Tracks accepted conversational answers explicitly.
- * Only populated when the AI accepts an answer and advances (emits a signal).
- */
 export interface AcceptedConversationAnswers {
   idea: string | null
   audience: string | null
@@ -38,44 +31,38 @@ export interface AcceptedConversationAnswers {
   tuningOutReason: string | null
 }
 
-// Signal-to-field mapping: when the AI emits a signal for one of these keys,
-// we know the corresponding conversational answer was accepted.
-const SIGNAL_TO_CONVERSATION_FIELD: Record<string, keyof AcceptedConversationAnswers> = {
-  topic: 'idea',
-  audiencePortrait: 'audience',
-  audience: 'audience',
-  desiredShift: 'desiredBehaviorChange',
-  resistancePattern: 'tuningOutReason',
-  tension: 'tuningOutReason',
+interface StreamEvent {
+  type: 'token' | 'validation_result' | 'done' | 'error'
+  content?: string
+  accepted?: boolean
+  step?: number
+  message?: string
 }
 
 export function useIntake({
   storyId,
-  initialMessages = [],
-  initialSignals = {},
   documentContext = null,
 }: UseIntakeOptions) {
-  const [messages, setMessages] = useState<IntakeMessage[]>(initialMessages)
-  const [signals, setSignals] = useState<Partial<IntakeSignals>>(initialSignals)
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [readyToGenerate, setReadyToGenerate] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  // Calibration state
-  const [intakePhase, setIntakePhase] = useState<IntakePhase>('conversing')
-  const [currentStep, setCurrentStep] = useState(1) // 1–10
-  const [payload, setPayload] = useState<Partial<IntakePayload>>({})
-  const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
-
-  // Explicitly tracked accepted conversational answers
+  // Conversational state — client-driven sequence
+  const [conversationStep, setConversationStep] = useState(0) // 0–3 for Q1–Q4
   const [acceptedAnswers, setAcceptedAnswers] = useState<AcceptedConversationAnswers>({
     idea: null,
     audience: null,
     desiredBehaviorChange: null,
     tuningOutReason: null,
   })
+  const [followUpQuestion, setFollowUpQuestion] = useState<string | null>(null)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Count completed conversational questions from accepted answers
+  // Calibration state
+  const [intakePhase, setIntakePhase] = useState<IntakePhase>('conversing')
+  const [currentStep, setCurrentStep] = useState(5) // 5–10 for calibration
+  const [payload, setPayload] = useState<Partial<IntakePayload>>({})
+  const [calibrationAnswers, setCalibrationAnswers] = useState<CalibrationAnswer[]>([])
+  const [readyToGenerate, setReadyToGenerate] = useState(false)
+
+  // Derived state
   const conversationalQuestionsAnswered = [
     acceptedAnswers.idea,
     acceptedAnswers.audience,
@@ -83,36 +70,46 @@ export function useIntake({
     acceptedAnswers.tuningOutReason,
   ].filter(Boolean).length
 
+  /**
+   * Submit an answer for the current conversational question.
+   * The client sends it to the AI for validation only.
+   */
   const sendMessage = useCallback(
     async (content: string) => {
       setError(null)
+      setFollowUpQuestion(null)
       setIsStreaming(true)
 
-      const userMessage: IntakeMessage = {
-        role: 'user',
-        content,
-        timestamp: new Date().toISOString(),
-      }
-
-      const updatedMessages = [...messages, userMessage]
-      setMessages(updatedMessages)
-
-      // Client-side Q1 validation: if idea hasn't been accepted yet,
-      // validate before sending to the API.
-      if (!acceptedAnswers.idea) {
+      // Client-side Q1 validation (fast reject for gibberish/bare topics)
+      if (conversationStep === 0 && !acceptedAnswers.idea) {
         const rejection = validateQ1(content)
         if (rejection) {
-          // Show the rejection as an AI message — don't hit the API
-          const rejectionMessage: IntakeMessage = {
-            role: 'assistant',
-            content: rejection,
-            timestamp: new Date().toISOString(),
-          }
-          setMessages((prev) => [...prev, rejectionMessage])
+          setFollowUpQuestion(rejection)
           setIsStreaming(false)
           return
         }
       }
+
+      // Build the validation prompt with prior context
+      const priorAnswers: Record<string, string> = {}
+      if (acceptedAnswers.idea) priorAnswers.idea = acceptedAnswers.idea
+      if (acceptedAnswers.audience) priorAnswers.audience = acceptedAnswers.audience
+      if (acceptedAnswers.desiredBehaviorChange) priorAnswers.desiredBehaviorChange = acceptedAnswers.desiredBehaviorChange
+
+      const validationPrompt = buildValidationPrompt(conversationStep, content, priorAnswers)
+
+      // Build transcript for persistence
+      const transcript = []
+      const fields: (keyof AcceptedConversationAnswers)[] = ['idea', 'audience', 'desiredBehaviorChange', 'tuningOutReason']
+      for (let i = 0; i < conversationStep; i++) {
+        const q = INTAKE_QUESTIONS[i]
+        const a = acceptedAnswers[fields[i]]
+        if (q && a) {
+          transcript.push({ question: q.headline, answer: a })
+        }
+      }
+      // Add the current answer (will be persisted if accepted)
+      transcript.push({ question: INTAKE_QUESTIONS[conversationStep].headline, answer: content })
 
       try {
         const response = await fetch('/api/intake/chat', {
@@ -120,10 +117,10 @@ export function useIntake({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             storyId,
-            message: content,
-            signals,
-            messages: updatedMessages,
-            documentContext,
+            step: conversationStep,
+            answer: content,
+            validationPrompt,
+            transcript,
           }),
         })
 
@@ -132,115 +129,49 @@ export function useIntake({
           throw new Error(errorData?.error || `Request failed: ${response.status}`)
         }
 
-        let assistantContent = ''
-        let signalsReady = false
-        const signalUpdates: Array<{ signal: string; value: string }> = []
+        let streamedText = ''
+        let accepted = false
 
-        for await (const event of readStream<IntakeStreamEvent>(response)) {
+        for await (const event of readStream<StreamEvent>(response)) {
           switch (event.type) {
             case 'token':
-              assistantContent += event.content
+              streamedText += event.content || ''
               break
-            case 'signal_update':
-              signalUpdates.push({ signal: event.signal, value: event.value })
-              break
-            case 'ready_to_generate':
-              signalsReady = true
+            case 'validation_result':
+              accepted = event.accepted || false
               break
             case 'done':
               break
           }
         }
 
-        // Apply signal updates and track accepted answers.
-        // When the AI emits a signal, it means it accepted the user's answer
-        // for that question and is advancing.
-        if (signalUpdates.length > 0) {
-          setSignals((prev) => {
-            const updated = { ...prev }
-            for (const { signal, value } of signalUpdates) {
-              (updated as Record<string, string>)[signal] = value
-            }
-            return updated
-          })
+        if (accepted) {
+          // Record the accepted answer
+          const question = INTAKE_QUESTIONS[conversationStep]
+          setAcceptedAnswers((prev) => ({
+            ...prev,
+            [question.field]: content,
+          }))
 
-          // Mark accepted answers based on which signals were emitted.
-          // For topic (Q1), double-check that the answer passes client validation
-          // as a safety net against AI non-compliance.
-          setAcceptedAnswers((prev) => {
-            const updated = { ...prev }
-            for (const { signal } of signalUpdates) {
-              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
-              if (field && !updated[field]) {
-                // For Q1 (idea/topic), validate client-side as safety net
-                if (field === 'idea' && validateQ1(content) !== null) {
-                  // Don't accept — validator rejected it
-                } else {
-                  updated[field] = content
-                }
-              }
-            }
-            return updated
-          })
-        }
-
-        // Positional fallback: if the AI advanced (responded with a new question)
-        // but didn't emit a signal for the current question, track the answer
-        // based on which sequential question was being answered.
-        if (!signalsReady) {
-          setAcceptedAnswers((prev) => {
-            const fields: (keyof AcceptedConversationAnswers)[] = [
-              'idea', 'audience', 'desiredBehaviorChange', 'tuningOutReason',
-            ]
-            // Find the first unanswered field — that's what this answer was for
-            const nextEmpty = fields.find((f) => !prev[f])
-            if (nextEmpty && signalUpdates.length === 0) {
-              // No signal was emitted but the AI responded (advanced) — record positionally
-              // Skip for Q1 which has its own validation
-              if (nextEmpty === 'idea') return prev
-              return { ...prev, [nextEmpty]: content }
-            }
-            return prev
-          })
-        }
-
-        if (signalsReady && intakePhase === 'conversing') {
-          // All 4 signals gathered. Transition to calibration.
-          // Do NOT display the AI's response — go directly to Q5.
-          // Use accepted answers for payload (not positional slicing).
-          setAcceptedAnswers((prev) => {
-            // Also capture the current answer if a signal was just emitted
-            const final = { ...prev }
-            for (const { signal } of signalUpdates) {
-              const field = SIGNAL_TO_CONVERSATION_FIELD[signal]
-              if (field && !final[field]) {
-                final[field] = content
-              }
-            }
-            setPayload((prevPayload) => ({
-              ...prevPayload,
-              idea: final.idea || '',
-              audience: final.audience || '',
-              desiredBehaviorChange: final.desiredBehaviorChange || '',
-              tuningOutReason: final.tuningOutReason || '',
+          // Advance to next step
+          if (conversationStep < 3) {
+            setConversationStep((prev) => prev + 1)
+          } else {
+            // All 4 questions answered — transition to calibration
+            setPayload((prev) => ({
+              ...prev,
+              idea: conversationStep === 0 ? content : acceptedAnswers.idea || '',
+              audience: conversationStep === 1 ? content : acceptedAnswers.audience || '',
+              desiredBehaviorChange: conversationStep === 2 ? content : acceptedAnswers.desiredBehaviorChange || '',
+              tuningOutReason: content,
             }))
-            return final
-          })
-          setIntakePhase('calibrating')
-          setCurrentStep(5)
-        } else {
-          // Normal flow: display the AI's response as the next question
-          const displayContent = assistantContent
-            .replace(/```signals\n[\s\S]*?\n```/g, '')
-            .replace(/\[SIGNALS_READY\]/g, '')
-            .trim()
-
-          const assistantMessage: IntakeMessage = {
-            role: 'assistant',
-            content: displayContent,
-            timestamp: new Date().toISOString(),
+            setIntakePhase('calibrating')
           }
-          setMessages((prev) => [...prev, assistantMessage])
+          setFollowUpQuestion(null)
+        } else {
+          // AI rejected — show its follow-up question
+          const cleanText = streamedText.replace('[ACCEPTED]', '').trim()
+          setFollowUpQuestion(cleanText || null)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -248,12 +179,11 @@ export function useIntake({
         setIsStreaming(false)
       }
     },
-    [storyId, messages, signals, documentContext, intakePhase]
+    [storyId, conversationStep, acceptedAnswers, documentContext]
   )
 
   /**
    * Handle a calibration step answer (Q5–Q9).
-   * No API call — these are handled locally.
    */
   const submitCalibrationAnswer = useCallback(
     (step: number, field: string, value: string | number) => {
@@ -321,21 +251,23 @@ export function useIntake({
   }, [getFinalPayload])
 
   return {
-    messages,
-    signals,
     isStreaming,
     readyToGenerate,
     error,
     sendMessage,
     setReadyToGenerate,
 
+    // Conversation state
+    conversationStep,
+    acceptedAnswers,
+    followUpQuestion,
+    conversationalQuestionsAnswered,
+
     // Calibration state
     intakePhase,
     currentStep,
     payload,
     calibrationAnswers,
-    acceptedAnswers,
-    conversationalQuestionsAnswered,
     submitCalibrationAnswer,
     submitFinalAnswer,
     getFinalPayload,
