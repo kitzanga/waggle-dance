@@ -43,8 +43,10 @@ export interface AcceptedConversationAnswers {
 const SIGNAL_TO_CONVERSATION_FIELD: Record<string, keyof AcceptedConversationAnswers> = {
   topic: 'idea',
   audiencePortrait: 'audience',
+  audience: 'audience',
   desiredShift: 'desiredBehaviorChange',
   resistancePattern: 'tuningOutReason',
+  tension: 'tuningOutReason',
 }
 
 export function useIntake({
@@ -179,6 +181,26 @@ export function useIntake({
               }
             }
             return updated
+          })
+        }
+
+        // Positional fallback: if the AI advanced (responded with a new question)
+        // but didn't emit a signal for the current question, track the answer
+        // based on which sequential question was being answered.
+        if (!signalsReady) {
+          setAcceptedAnswers((prev) => {
+            const fields: (keyof AcceptedConversationAnswers)[] = [
+              'idea', 'audience', 'desiredBehaviorChange', 'tuningOutReason',
+            ]
+            // Find the first unanswered field — that's what this answer was for
+            const nextEmpty = fields.find((f) => !prev[f])
+            if (nextEmpty && signalUpdates.length === 0) {
+              // No signal was emitted but the AI responded (advanced) — record positionally
+              // Skip for Q1 which has its own validation
+              if (nextEmpty === 'idea') return prev
+              return { ...prev, [nextEmpty]: content }
+            }
+            return prev
           })
         }
 

@@ -93,8 +93,6 @@ export function IntakeChat({
         question: QUESTION_LABELS[i],
         answer,
       })
-    } else {
-      break // Stop at first unanswered — they're sequential
     }
   }
 
